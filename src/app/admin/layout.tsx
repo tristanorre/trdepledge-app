@@ -18,6 +18,7 @@ const ADMIN_NAV = [
   { href: "/admin/hr",         label: "HR" },
   { href: "/admin/inventory",  label: "Inventory" },
   { href: "/admin/clients",    label: "Clients" },
+  { href: "/admin/costs",      label: "Costs" },
 ];
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -107,15 +108,15 @@ const bottomNavStyle: React.CSSProperties = {
   background: "var(--navy)",
   borderTop: "1px solid rgba(255,255,255,0.08)",
   display: "grid",
-  gridTemplateColumns: "repeat(7, 1fr)",
+  gridTemplateColumns: "repeat(8, 1fr)",
   zIndex: 100,
 };
 const bottomNavLinkStyle: React.CSSProperties = {
   color: "rgba(255,255,255,0.7)",
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 700,
   textAlign: "center",
-  padding: "12px 4px",
+  padding: "12px 2px",
   minHeight: 44,
   display: "flex",
   alignItems: "center",
