@@ -50,6 +50,14 @@ const META: Record<IntegrationKey, {
     ],
     setupHint: "Square dashboard → webhook URL: /api/webhooks/square + Subscribe to payment.created and payment.updated",
   },
+  email: {
+    name: "Email (Resend)",
+    blurb: "Email notifications to Thomas when website enquiries arrive. Reply-to is set to the client's address so a reply goes straight back.",
+    triggers: [
+      "Auto: new enquiry → email to ENQUIRY_NOTIFY_EMAIL",
+    ],
+    setupHint: "resend.com → API key + verify a sending domain. Set RESEND_API_KEY, RESEND_FROM, ENQUIRY_NOTIFY_EMAIL.",
+  },
 };
 
 type SearchParams = { xero?: string };

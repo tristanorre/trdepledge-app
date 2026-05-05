@@ -230,17 +230,20 @@ It returns JSON with how many SMSes and pushes were dispatched.
 
 These don't block deployment, but they're real and worth budgeting:
 
-- **Time Allocation Board is read-only.** Tap-to-assign modal not built.
-- **Manual SMS phone lookup is fragile.** Falls back to enquiry-by-name when no
-  client_id is set. Wire the clients table population (Xero contact sync) before
-  relying on this in production.
-- **No "shift starting in 1 hour" worker push.** Daily 6pm push only — hourly
-  cron not yet wired.
 - **Direct Xero Payroll push is a stub.** CSV export works; direct API push
   needs each worker mapped to their Xero employee record (TFN, super, leave
-  types) — that's a workflow we haven't designed.
-- **No email-on-enquiry.** Push + SMS-to-client are wired; emailing Thomas is
-  logged-only until SendGrid/Resend is added.
+  types) — that's a workflow we haven't designed. Use the CSV until then.
+- **Manual SMS phone lookup still falls back to enquiries** when a job has
+  no linked `client_id`. Once you populate the clients table (now CRUD-able
+  at `/admin/clients`, or auto-populated by the Xero invoice flow), this
+  becomes deterministic.
+- **No SMS / push retry queue.** A failed Twilio or OneSignal call is logged
+  with status but not retried. For our volume that's fine; if delivery rates
+  ever matter, wire a queue.
+- **iOS PWA install requires `apple-touch-icon.png`** which `npm run generate-icons`
+  produces — make sure it's deployed.
+- **Cron times drift ±1hr with daylight saving** (Vercel Cron is UTC only).
+  Documented in README under "Vercel Cron".
 
 When you hit one of these in real use, that's the natural moment to fix it —
 let me know and I'll close the gap.

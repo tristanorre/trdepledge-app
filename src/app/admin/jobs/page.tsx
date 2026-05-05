@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import JobCard from "@/components/JobCard";
-import type { Job, JobStatus, ClientType } from "@/lib/types";
+import type { Job, JobStatus, ClientType, WorkerListEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,13 +21,14 @@ const TYPE_OPTIONS: { value: ClientType | ""; label: string }[] = [
   { value: "Aged Care", label: "Aged Care" },
 ];
 
-type SearchParams = { status?: string; type?: string; date?: string };
+type SearchParams = { status?: string; type?: string; date?: string; worker?: string };
 
 export default async function AdminJobsPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdmin();
 
   const supabase = getServiceClient();
   let jobs: Job[] = [];
+  let workers: WorkerListEntry[] = [];
   let dbConfigured = !!supabase;
 
   if (supabase) {
@@ -41,10 +42,16 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
     if (searchParams.status) q = q.eq("status", searchParams.status);
     if (searchParams.type) q = q.eq("client_type", searchParams.type);
     if (searchParams.date) q = q.eq("date", searchParams.date);
+    if (searchParams.worker) q = q.contains("assigned_worker_ids", [searchParams.worker]);
 
-    const { data, error } = await q;
+    const [{ data: js, error }, { data: ws }] = await Promise.all([
+      q,
+      supabase.from("users").select("id, name, colour")
+        .eq("role", "worker").eq("active", true).order("name"),
+    ]);
     if (error) console.error("[admin/jobs page]", error);
-    jobs = (data ?? []) as Job[];
+    jobs = (js ?? []) as Job[];
+    workers = (ws ?? []) as WorkerListEntry[];
   }
 
   return (
@@ -73,6 +80,10 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
         </select>
         <select name="type" defaultValue={searchParams.type ?? ""} className="form-select" style={selectStyle}>
           {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <select name="worker" defaultValue={searchParams.worker ?? ""} className="form-select" style={selectStyle}>
+          <option value="">All workers</option>
+          {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
         </select>
         <input
           type="date"

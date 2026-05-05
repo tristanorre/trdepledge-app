@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import RosterEditor from "@/components/RosterEditor";
-import { mondayOfWeek, todayISO } from "@/lib/dates";
+import { mondayOfWeek, todayISO, addDaysISO } from "@/lib/dates";
 import type { WorkerListEntry } from "@/lib/types";
 import type { RosterRow } from "@/lib/schedule";
 
@@ -22,14 +22,18 @@ export default async function AdminRosterPage({
 
   let workers: WorkerListEntry[] = [];
   let rows: RosterRow[] = [];
+  let prevRows: RosterRow[] = [];
+  const prevWeek = addDaysISO(weekStart, -7);
 
   if (supabase) {
-    const [w, r] = await Promise.all([
+    const [w, r, p] = await Promise.all([
       supabase.from("users").select("id, name, colour").eq("role", "worker").eq("active", true).order("name"),
       supabase.from("roster").select("id, worker_id, week_start, days, start_time, end_time").eq("week_start", weekStart),
+      supabase.from("roster").select("id, worker_id, week_start, days, start_time, end_time").eq("week_start", prevWeek),
     ]);
     workers = (w.data ?? []) as WorkerListEntry[];
     rows = (r.data ?? []) as RosterRow[];
+    prevRows = (p.data ?? []) as RosterRow[];
   }
 
   return (
@@ -44,6 +48,7 @@ export default async function AdminRosterPage({
         weekStart={weekStart}
         workers={workers}
         initialRows={rows}
+        previousWeekRows={prevRows}
       />
     </div>
   );

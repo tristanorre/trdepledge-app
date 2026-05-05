@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase";
 import { sendSms, normaliseAuPhone } from "@/lib/twilio";
 import { sendPush } from "@/lib/onesignal";
+import { sendEmail } from "@/lib/email";
 import { sms } from "@/lib/sms-templates";
 
 export const runtime = "nodejs";
@@ -130,7 +131,66 @@ export async function POST(req: Request) {
     );
   })());
 
+  // 3) Email to ENQUIRY_NOTIFY_EMAIL (typically Thomas) so it lands in
+  //    his inbox even if the OneSignal push misses or his phone is off.
+  const notifyEmail = process.env.ENQUIRY_NOTIFY_EMAIL;
+  if (notifyEmail) {
+    sideEffects.push(sendEmail({
+      to: notifyEmail,
+      reply_to: data.email,
+      subject: `New enquiry — ${data.first_name} ${data.last_name} (${data.service_type})`,
+      html: enquiryEmailHtml(data),
+      text: enquiryEmailText(data),
+    }));
+  }
+
   await Promise.allSettled(sideEffects);
 
   return NextResponse.json({ ok: true, persisted: true, id: inserted.id });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function enquiryEmailHtml(d: Payload): string {
+  const phoneLine = d.phone
+    ? `<tr><td><strong>Phone</strong></td><td><a href="tel:${escapeHtml(d.phone)}">${escapeHtml(d.phone)}</a></td></tr>`
+    : `<tr><td><strong>Phone</strong></td><td style="color:#B91C1C;">No phone — email only</td></tr>`;
+  const messageBlock = d.message
+    ? `<p style="margin-top:16px;background:#F2F2EC;padding:12px;border-radius:8px;white-space:pre-wrap;">${escapeHtml(d.message)}</p>`
+    : "";
+  return `<!doctype html><html><body style="font-family:system-ui,sans-serif;color:#0D0D0D;line-height:1.5;">
+<h2 style="font-family:Georgia,serif;color:#0A1F3D;margin:0 0 16px;">New website enquiry</h2>
+<p style="margin:0 0 16px;color:#6B7280;">Submitted via the contact form.</p>
+<table style="border-collapse:collapse;font-size:14px;">
+  <tr><td style="padding:6px 16px 6px 0;"><strong>Name</strong></td><td>${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</td></tr>
+  <tr><td style="padding:6px 16px 6px 0;"><strong>Email</strong></td><td><a href="mailto:${escapeHtml(d.email)}">${escapeHtml(d.email)}</a></td></tr>
+  ${phoneLine}
+  <tr><td style="padding:6px 16px 6px 0;"><strong>Suburb</strong></td><td>${escapeHtml(d.suburb)}</td></tr>
+  <tr><td style="padding:6px 16px 6px 0;"><strong>Service</strong></td><td>${escapeHtml(d.service_type)}</td></tr>
+  ${d.client_type ? `<tr><td style="padding:6px 16px 6px 0;"><strong>Client type</strong></td><td>${escapeHtml(d.client_type)}</td></tr>` : ""}
+</table>
+${messageBlock}
+<p style="margin-top:24px;font-size:12px;color:#6B7280;">Reply to this email and it'll go straight to ${escapeHtml(d.email)}.</p>
+</body></html>`;
+}
+
+function enquiryEmailText(d: Payload): string {
+  return [
+    "New website enquiry",
+    "",
+    `Name: ${d.first_name} ${d.last_name}`,
+    `Email: ${d.email}`,
+    `Phone: ${d.phone ?? "(not provided)"}`,
+    `Suburb: ${d.suburb}`,
+    `Service: ${d.service_type}`,
+    d.client_type ? `Client type: ${d.client_type}` : null,
+    d.message ? `\nMessage:\n${d.message}` : null,
+  ].filter(Boolean).join("\n");
 }

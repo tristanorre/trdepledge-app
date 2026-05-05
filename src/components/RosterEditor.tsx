@@ -13,6 +13,9 @@ type Props = {
   weekStart: string;
   workers: WorkerListEntry[];
   initialRows: RosterRow[];
+  // Previous-week rows, used by the "Copy from last week" shortcut.
+  // Empty array if there's nothing to copy.
+  previousWeekRows: RosterRow[];
 };
 
 type Editable = {
@@ -22,7 +25,7 @@ type Editable = {
   end_time: string;
 };
 
-export default function RosterEditor({ weekStart, workers, initialRows }: Props) {
+export default function RosterEditor({ weekStart, workers, initialRows, previousWeekRows }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -39,6 +42,21 @@ export default function RosterEditor({ weekStart, workers, initialRows }: Props)
       };
     })
   );
+
+  function copyFromLastWeek() {
+    if (previousWeekRows.length === 0) return;
+    if (initialRows.length > 0 && !confirm("Replace this week's roster with last week's? Unsaved changes will be lost.")) return;
+    const prevMap = new Map(previousWeekRows.map((r) => [r.worker_id, r]));
+    setRows(workers.map((w) => {
+      const r = prevMap.get(w.id);
+      return {
+        worker_id: w.id,
+        days: new Set<DayKey>(r?.days ?? []),
+        start_time: r?.start_time ?? "07:00",
+        end_time: r?.end_time ?? "17:00",
+      };
+    }));
+  }
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +122,17 @@ export default function RosterEditor({ weekStart, workers, initialRows }: Props)
             </div>
           )}
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {previousWeekRows.length > 0 && (
+            <button
+              type="button"
+              onClick={copyFromLastWeek}
+              style={navBtn}
+              title="Replace this week's roster with last week's"
+            >
+              ↺ Copy last week
+            </button>
+          )}
           <button type="button" onClick={() => gotoWeek(addDaysISO(weekStart, -7))} style={navBtn} aria-label="Previous week">‹ Week</button>
           <button type="button" onClick={() => gotoWeek(addDaysISO(weekStart,  7))} style={navBtn} aria-label="Next week">Week ›</button>
         </div>

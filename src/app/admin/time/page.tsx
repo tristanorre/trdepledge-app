@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { loadDaySchedule, colourForSlot, type SlotColour, type WorkerDayState } from "@/lib/schedule";
@@ -76,7 +77,7 @@ export default async function TimeAllocationBoardPage({
             <SlotHeader slots={slots} />
             <div style={{ position: "relative" }}>
               {data.workers_state.map((w) => (
-                <WorkerRow key={w.worker.id} state={w} slots={slots} />
+                <WorkerRow key={w.worker.id} state={w} slots={slots} date={date} />
               ))}
               {nowOffsetPx !== null && (
                 <div
@@ -98,11 +99,11 @@ export default async function TimeAllocationBoardPage({
       )}
 
       <div style={{
-        marginTop: 16, padding: 14, background: "rgba(255, 229, 0, 0.16)",
-        borderRadius: 12, fontSize: 13, color: "#5C4F00",
+        marginTop: 16, padding: 14, background: "rgba(168, 216, 24, 0.16)",
+        borderRadius: 12, fontSize: 13, color: "#3F5C00",
       }}>
-        <strong>Read-only for now.</strong> Tap-to-assign on a free slot lands once we wire
-        the assignment modal — for now use the <em>Jobs</em> tab to create or edit jobs.
+        <strong>Tap any green slot</strong> to start a new job at that time, pre-assigned
+        to that worker. Already-scheduled and on-leave slots are read-only.
       </div>
     </div>
   );
@@ -147,7 +148,7 @@ function SlotHeader({ slots }: { slots: number[] }) {
   );
 }
 
-function WorkerRow({ state, slots }: { state: WorkerDayState; slots: number[] }) {
+function WorkerRow({ state, slots, date }: { state: WorkerDayState; slots: number[]; date: string }) {
   return (
     <div style={{ display: "flex", borderBottom: "1px solid var(--gray-light)" }}>
       <div style={{
@@ -165,17 +166,33 @@ function WorkerRow({ state, slots }: { state: WorkerDayState; slots: number[] })
         {slots.map((m) => {
           const colour = colourForSlot(state, m);
           const c = COLOUR_MAP[colour];
+          const baseStyle: React.CSSProperties = {
+            width: SLOT_WIDTH,
+            height: ROW_HEIGHT,
+            background: c.bg,
+            borderRight: "1px solid rgba(255,255,255,0.4)",
+            borderTop: m % 60 === 0 ? "1px solid var(--gray-light)" : "none",
+          };
+          // Free slots are tappable: prefill the new-job form with the
+          // slot's date/time and the worker as initial assignee.
+          if (colour === "free") {
+            const hh = String(Math.floor(m / 60)).padStart(2, "0");
+            const mm = String(m % 60).padStart(2, "0");
+            const href = `/admin/jobs/new?date=${date}&time=${hh}:${mm}&worker=${state.worker.id}`;
+            return (
+              <Link
+                key={m}
+                href={href}
+                title={`${minutesToLabel(m)} — assign ${state.worker.name}`}
+                style={{ ...baseStyle, display: "block", cursor: "pointer" }}
+              />
+            );
+          }
           return (
             <div
               key={m}
               title={`${minutesToLabel(m)} — ${colour}`}
-              style={{
-                width: SLOT_WIDTH,
-                height: ROW_HEIGHT,
-                background: c.bg,
-                borderRight: "1px solid rgba(255,255,255,0.4)",
-                borderTop: m % 60 === 0 ? "1px solid var(--gray-light)" : "none",
-              }}
+              style={baseStyle}
             />
           );
         })}

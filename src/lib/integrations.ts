@@ -4,7 +4,7 @@
 // `<name>Configured()` and no-ops if false (logging once at WARN level).
 // The Settings page also reads these to drive its status badges.
 
-export type IntegrationKey = "twilio" | "onesignal" | "xero" | "square";
+export type IntegrationKey = "twilio" | "onesignal" | "xero" | "square" | "email";
 
 export type IntegrationStatus = {
   key: IntegrationKey;
@@ -54,5 +54,6 @@ export function getIntegrationStatuses(): IntegrationStatus[] {
     status("onesignal", ["NEXT_PUBLIC_ONESIGNAL_APP_ID", "ONESIGNAL_REST_API_KEY"]),
     status("xero",      ["XERO_CLIENT_ID", "XERO_CLIENT_SECRET", "XERO_REDIRECT_URI"]),
     status("square",    ["SQUARE_ACCESS_TOKEN", "SQUARE_WEBHOOK_SIGNATURE_KEY"]),
+    status("email",     ["RESEND_API_KEY", "RESEND_FROM", "ENQUIRY_NOTIFY_EMAIL"]),
   ];
 }
