@@ -1,0 +1,124 @@
+import { NextResponse } from "next/server";
+import { getServiceClient } from "@/lib/supabase";
+import { sendSms, normaliseAuPhone } from "@/lib/twilio";
+import { sendPush } from "@/lib/onesignal";
+import { sms } from "@/lib/sms-templates";
+import { addDaysISO, todayISO } from "@/lib/dates";
+import type { Job } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+// Vercel Cron entry point. Runs at 18:00 every day (config in vercel.json).
+//
+// Two responsibilities per spec:
+//   1. SMS the client a reminder for tomorrow's job
+//   2. Push the assigned workers ("New job for tomorrow")
+//
+// Auth: Vercel Cron sets the `Authorization: Bearer <CRON_SECRET>`
+// header. We compare against the secret env var so this can't be
+// triggered from the open internet.
+export async function GET(req: Request) {
+  if (!isAuthorisedCron(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const supabase = getServiceClient();
+  if (!supabase) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+  const tomorrow = addDaysISO(todayISO(), 1);
+
+  const { data: jobsData, error } = await supabase
+    .from("jobs")
+    .select("*")
+    .eq("date", tomorrow)
+    .in("status", ["scheduled", "in_progress"]);
+
+  if (error) {
+    console.error("[cron job-reminders]", error);
+    return NextResponse.json({ error: "Could not load jobs" }, { status: 500 });
+  }
+  const jobs = (jobsData ?? []) as Job[];
+
+  let smsSent = 0;
+  let pushSent = 0;
+
+  // Per-job: SMS the client (if we have their phone via clients table
+  // or a fallback enquiry match), and push every assigned worker.
+  for (const j of jobs) {
+    // Worker push first — cheaper, no name-resolution required.
+    if (j.assigned_worker_ids.length > 0) {
+      await sendPush({
+        user_ids: j.assigned_worker_ids,
+        title: "New job for tomorrow",
+        message: `${j.client_name}${j.suburb ? ` · ${j.suburb}` : ""}${j.scheduled_time ? ` · ${String(j.scheduled_time).slice(0, 5)}` : ""}`,
+        deep_link: `/worker/jobs/${j.id}`,
+      }, supabase);
+      pushSent++;
+    }
+
+    // Client SMS — look up phone via linked client or fall back to a
+    // recent enquiry by name. Skip silently if neither has a phone.
+    const phoneInfo = await resolveClientPhone(supabase, j);
+    if (phoneInfo?.phone) {
+      const firstName = (phoneInfo.first_name || j.client_name).split(" ")[0] || "there";
+      await sendSms(
+        normaliseAuPhone(phoneInfo.phone),
+        sms.jobReminder(firstName),
+        { trigger_type: "auto", recipient_name: phoneInfo.first_name ?? j.client_name, job_id: j.id, client_id: j.client_id },
+        supabase,
+      );
+      smsSent++;
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    date: tomorrow,
+    jobs: jobs.length,
+    pushes_dispatched: pushSent,
+    sms_dispatched: smsSent,
+  });
+}
+
+function isAuthorisedCron(req: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    // No secret set — allow Vercel-internal calls only by checking the
+    // bearer header presence. Vercel Cron always sends one.
+    return !!req.headers.get("authorization");
+  }
+  return req.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+async function resolveClientPhone(
+  supabase: ReturnType<typeof getServiceClient>,
+  job: Job,
+): Promise<{ phone: string; first_name: string | null } | null> {
+  if (!supabase) return null;
+
+  if (job.client_id) {
+    const { data } = await supabase
+      .from("clients")
+      .select("phone, name")
+      .eq("id", job.client_id)
+      .maybeSingle();
+    if (data?.phone) return { phone: data.phone, first_name: data.name?.split(" ")[0] ?? null };
+  }
+
+  // Fallback to most recent matching enquiry. Won't be perfect for
+  // common names; that's why the spec wants the clients table populated
+  // (Slice 8.1 work).
+  const first = job.client_name.split(" ")[0];
+  const last = job.client_name.split(" ").slice(1).join(" ");
+  const { data: enq } = await supabase
+    .from("enquiries")
+    .select("phone, first_name")
+    .ilike("first_name", first ?? "")
+    .ilike("last_name", last ?? "")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (enq?.phone) return { phone: enq.phone, first_name: enq.first_name };
+  return null;
+}

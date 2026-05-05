@@ -1,0 +1,87 @@
+// T.R. Depledge field-app service worker.
+//
+// One worker, two responsibilities:
+//   1. Forward push events to OneSignal's SDK so notifications work.
+//   2. Cache the app shell + recently-viewed worker pages so the team
+//      can open the app on a flaky 4G site and still see today's jobs.
+//
+// Registered by ServiceWorkerRegister.tsx on the client. OneSignal is
+// configured to use this same worker (serviceWorkerPath in OneSignalRegister.tsx),
+// so we don't end up with two competing workers at the root scope.
+
+importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
+
+const VERSION = "v1";
+const SHELL_CACHE = `trdepledge-shell-${VERSION}`;
+const PAGE_CACHE  = `trdepledge-pages-${VERSION}`;
+
+// Pre-cached shell — keep tight. Anything else is cached on first hit.
+const SHELL = [
+  "/",
+  "/login",
+  "/logo.svg",
+  "/manifest.webmanifest",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL)));
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil((async () => {
+    // Drop old caches between deploys.
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((k) => k.startsWith("trdepledge-") && !k.endsWith(VERSION))
+        .map((k) => caches.delete(k))
+    );
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return; // skip mutations entirely
+
+  const url = new URL(req.url);
+
+  // Never cache API responses or auth — always go to network.
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/_next/data/")) {
+    return;
+  }
+
+  // Worker app pages: stale-while-revalidate. Lets workers open the app
+  // offline and at least see what they had loaded last time, while
+  // fresh data lands in the background.
+  if (url.pathname.startsWith("/worker") || url.pathname.startsWith("/admin")) {
+    event.respondWith(staleWhileRevalidate(req, PAGE_CACHE));
+    return;
+  }
+
+  // Public marketing pages + static assets: cache-first.
+  if (req.destination === "image" || req.destination === "font" || req.destination === "style") {
+    event.respondWith(cacheFirst(req, SHELL_CACHE));
+    return;
+  }
+});
+
+async function staleWhileRevalidate(req, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(req);
+  const network = fetch(req).then((res) => {
+    if (res && res.ok) cache.put(req, res.clone());
+    return res;
+  }).catch(() => cached);
+  return cached || network;
+}
+
+async function cacheFirst(req, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(req);
+  if (cached) return cached;
+  const res = await fetch(req);
+  if (res && res.ok) cache.put(req, res.clone());
+  return res;
+}
