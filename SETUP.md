@@ -109,14 +109,9 @@ Every route should report ✓. If anything is ✗, post the output and we diagno
 4. Password: `ChangeMe!2025`
 5. You should land on `/admin` with the dashboard
 
-> **Known gap**: there's no in-app "change password" page yet. To rotate
-> Thomas's password, run this in Supabase SQL editor (replace `<new>`):
->
-> ```sql
-> update public.users
-> set password_hash = crypt('<new>', gen_salt('bf', 10))
-> where email = 't.rdepledge@outlook.com';
-> ```
+**Change Thomas's password** before doing anything else: tap his name in
+the top bar → `/admin/account` → fill the form. New password takes effect
+on next sign-in.
 
 ---
 
@@ -127,13 +122,9 @@ Every route should report ✓. If anything is ✗, post the output and we diagno
 3. PIN `1234`
 4. You should land on `/worker`
 
-> **Known gap**: there's no in-app "change PIN" page yet either. Rotate via:
->
-> ```sql
-> update public.users
-> set pin_hash = crypt('<4-digit>', gen_salt('bf', 10))
-> where name = '<Worker Name>';
-> ```
+**Change the worker's PIN** the same way: tap their name in the top bar →
+`/worker/account` → enter current PIN `1234`, set a new one. Each worker
+should do this on their first sign-in.
 
 ---
 
@@ -239,7 +230,6 @@ It returns JSON with how many SMSes and pushes were dispatched.
 
 These don't block deployment, but they're real and worth budgeting:
 
-- **No in-app password / PIN change pages.** Use SQL until built.
 - **Time Allocation Board is read-only.** Tap-to-assign modal not built.
 - **Manual SMS phone lookup is fragile.** Falls back to enquiry-by-name when no
   client_id is set. Wire the clients table population (Xero contact sync) before

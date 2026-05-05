@@ -42,9 +42,19 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             ⚙
           </Link>
-          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
+          <Link
+            href="/admin/account"
+            style={{
+              fontSize: 13, color: "rgba(255,255,255,0.65)",
+              padding: "6px 10px", borderRadius: 8,
+              minHeight: 36, display: "inline-flex", alignItems: "center",
+              textDecoration: "underline", textUnderlineOffset: "3px",
+              textDecorationColor: "rgba(255,255,255,0.2)",
+            }}
+            title="Account"
+          >
             {session.user.name}
-          </span>
+          </Link>
           <SignOutButton />
         </div>
       </header>

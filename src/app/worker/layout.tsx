@@ -26,9 +26,19 @@ export default async function WorkerLayout({ children }: { children: React.React
           <Image src="/logo.svg" alt="T.R. Depledge" width={690} height={390} style={{ height: 36, width: "auto" }} />
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.65)" }}>
+          <Link
+            href="/worker/account"
+            style={{
+              fontSize: 13, color: "rgba(255,255,255,0.65)",
+              padding: "6px 10px", borderRadius: 8,
+              minHeight: 36, display: "inline-flex", alignItems: "center",
+              textDecoration: "underline", textUnderlineOffset: "3px",
+              textDecorationColor: "rgba(255,255,255,0.2)",
+            }}
+            title="Account"
+          >
             {session.user.name}
-          </span>
+          </Link>
           <SignOutButton />
         </div>
       </header>
