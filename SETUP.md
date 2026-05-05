@@ -142,7 +142,37 @@ A 5-minute walk-through to verify everything wires together:
 
 ---
 
-## 9. Generate icons (one-time)
+## 9. Run the E2E tests (optional but recommended)
+
+Playwright tests live in `e2e/`. They drive a real browser against the
+running dev server.
+
+```bash
+# One-time: install the Chromium binary (~100 MB)
+npm run test:e2e:install
+
+# Run the full suite (auto-starts the dev server if one isn't already up)
+npm run test:e2e
+
+# Or use the interactive UI
+npm run test:e2e:ui
+```
+
+Coverage:
+- public marketing pages render + contact form submits
+- admin login, worker login, wrong-creds errors
+- admin job CRUD round trip (create → list → edit status → reopen → delete)
+- admin page-render smoke (every authenticated admin page, no runtime errors)
+- worker page-render smoke (mobile viewport)
+
+The suite assumes seeded credentials (Thomas / `ChangeMe!2025`, workers / PIN `1234`).
+Override via `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_WORKER_NAME`,
+`E2E_WORKER_PIN`. After credentials are rotated in production, set those
+env vars in CI to keep the suite working.
+
+---
+
+## 10. Generate icons (one-time)
 
 If you ever change `public/logo.svg`, regenerate the PWA icons:
 
@@ -155,7 +185,7 @@ and `public/favicon.ico`.
 
 ---
 
-## 10. Production deploy (Vercel)
+## 11. Production deploy (Vercel)
 
 1. **Push the repo to GitHub** at `github.com/trdepledge-app/trdepledge-app`.
 2. **vercel.com → New Project** → import the repo.
@@ -174,7 +204,7 @@ and `public/favicon.ico`.
 
 ---
 
-## 11. Wire integrations (post-deploy)
+## 12. Wire integrations (post-deploy)
 
 Order doesn't matter — each is independent.
 
@@ -207,7 +237,7 @@ Order doesn't matter — each is independent.
 
 ---
 
-## 12. Vercel Cron
+## 13. Vercel Cron
 
 `vercel.json` schedules `/api/cron/job-reminders` daily at 08:30 UTC, which
 is **6 PM ACST** (winter) / **7 PM ACDT** (summer).
