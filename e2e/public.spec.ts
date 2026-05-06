@@ -13,9 +13,11 @@ test.describe("Public marketing site", () => {
 
   test("services page lists the spec's services", async ({ page }) => {
     await page.goto("/services");
-    await expect(page.getByText("Garden Maintenance", { exact: false })).toBeVisible();
-    await expect(page.getByText("NDIS Garden Support", { exact: false })).toBeVisible();
-    await expect(page.getByText("Aged Care Services", { exact: false })).toBeVisible();
+    // Each label appears multiple times (page hero + service cards +
+    // footer). `.first()` is enough — we just need *at least one* match.
+    await expect(page.getByText("Garden Maintenance", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("NDIS Garden Support", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Aged Care Services", { exact: false }).first()).toBeVisible();
   });
 
   test("NDIS page shows the support item code + 2025-26 rate", async ({ page }) => {
@@ -26,16 +28,18 @@ test.describe("Public marketing site", () => {
 
   test("about page lists the team with Thomas as Owner", async ({ page }) => {
     await page.goto("/about");
-    await expect(page.getByText("Thomas Depledge")).toBeVisible();
-    await expect(page.getByText(/Owner/i)).toBeVisible();
+    // Thomas's name appears in the founder story + the team card.
+    await expect(page.getByText("Thomas Depledge").first()).toBeVisible();
+    await expect(page.getByText(/Owner/i).first()).toBeVisible();
   });
 
   test("gallery + contact pages render", async ({ page }) => {
     await page.goto("/gallery");
-    await expect(page.getByRole("heading", { name: /Gallery/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Gallery/i }).first()).toBeVisible();
 
     await page.goto("/contact");
-    await expect(page.getByText("0474 844 204")).toBeVisible();
+    // Phone shows in nav, footer, hero, contact card — any match is fine.
+    await expect(page.getByText("0474 844 204").first()).toBeVisible();
   });
 });
 

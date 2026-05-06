@@ -21,28 +21,61 @@ export default async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();
 
   // ── Admin ───────────────────────────────────────────────────────
-  const adminCtx = await browser.newContext({ baseURL });
-  const adminPage = await adminCtx.newPage();
-  await adminPage.goto("/login");
-  await adminPage.getByRole("tab", { name: "Admin" }).click();
-  await adminPage.getByLabel("Email").fill(ADMIN_EMAIL);
-  await adminPage.getByLabel("Password").fill(ADMIN_PASSWORD);
-  await adminPage.getByRole("button", { name: /Sign in/i }).click();
-  await adminPage.waitForURL(/\/admin(\?|$)/, { timeout: 30_000 });
-  await adminCtx.storageState({ path: path.join(authDir, "admin.json") });
-  await adminCtx.close();
+  // Tolerant of login failure so the `anon` project still runs even
+  // when Supabase isn't configured. The admin/mobile-worker projects
+  // will see their own auth-required pages bounce to /login.
+  await tryLogin({
+    browser, baseURL, authDir, file: "admin.json",
+    setup: async (page) => {
+      await page.goto("/login");
+      await page.getByRole("tab", { name: "Admin" }).click();
+      await page.getByLabel("Email").fill(ADMIN_EMAIL);
+      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await page.getByRole("button", { name: /Sign in/i }).click();
+      await page.waitForURL(/\/admin(\?|$)/, { timeout: 30_000 });
+    },
+  });
 
   // ── Worker (Bradley) ────────────────────────────────────────────
-  const workerCtx = await browser.newContext({ baseURL });
-  const workerPage = await workerCtx.newPage();
-  await workerPage.goto("/login");
-  // Worker tab is the default — selectOption on the worker dropdown.
-  await workerPage.getByLabel(/Who.+logging in/i).selectOption({ label: WORKER_NAME });
-  await workerPage.getByLabel(/4-digit PIN/i).fill(WORKER_PIN);
-  await workerPage.getByRole("button", { name: /Sign in/i }).click();
-  await workerPage.waitForURL(/\/worker(\?|$)/, { timeout: 30_000 });
-  await workerCtx.storageState({ path: path.join(authDir, "worker.json") });
-  await workerCtx.close();
+  await tryLogin({
+    browser, baseURL, authDir, file: "worker.json",
+    setup: async (page) => {
+      await page.goto("/login");
+      await page.getByLabel(/Who.+logging in/i).selectOption({ label: WORKER_NAME });
+      await page.getByLabel(/4-digit PIN/i).fill(WORKER_PIN);
+      await page.getByRole("button", { name: /Sign in/i }).click();
+      await page.waitForURL(/\/worker(\?|$)/, { timeout: 30_000 });
+    },
+  });
 
   await browser.close();
+}
+
+async function tryLogin(opts: {
+  browser: Awaited<ReturnType<typeof chromium.launch>>;
+  baseURL: string;
+  authDir: string;
+  file: string;
+  setup: (page: Awaited<ReturnType<Awaited<ReturnType<typeof chromium.launch>>["newContext"]>>["newPage"] extends () => Promise<infer P> ? P : never) => Promise<void>;
+}): Promise<void> {
+  const ctx = await opts.browser.newContext({ baseURL: opts.baseURL });
+  const page = await ctx.newPage();
+  try {
+    await opts.setup(page);
+    await ctx.storageState({ path: path.join(opts.authDir, opts.file) });
+    console.log(`[global-setup] saved ${opts.file}`);
+  } catch (err) {
+    console.warn(
+      `[global-setup] could not log in for ${opts.file} — writing empty storage state. ` +
+      `Specs that require this auth will fail. Reason: ${(err as Error).message?.split("\n")[0]}`
+    );
+    // Write an empty storage-state stub so Playwright doesn't crash on
+    // `storageState: ".auth/admin.json"` for projects that depend on it.
+    fs.writeFileSync(
+      path.join(opts.authDir, opts.file),
+      JSON.stringify({ cookies: [], origins: [] }),
+    );
+  } finally {
+    await ctx.close();
+  }
 }
