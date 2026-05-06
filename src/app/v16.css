@@ -38,19 +38,23 @@ main { padding-top: 0; }
 
 .v16-logo-slot {
   position: relative;
-  width: 160px;
+  width: 240px;
   height: 100%;
   flex-shrink: 0;
 }
 /*
  * Logo bursts down out of the bar onto the yellow hero — the visual
- * anchor of v16. Sized via explicit height (not width: 100% of slot)
- * so the overhang is predictable: 140px tall with 8px top offset =
- * 148px from page top. Against a 110px nav, that's a deliberate
- * ~38px overhang into the yellow hero — enough presence to read as
- * intentional, small enough to clear the rotating "Wallaroo's
- * Trusted" eyebrow below it. The previous `width: 100%` formula
- * gave a 280px-tall logo that smothered the eyebrow text.
+ * anchor of v16.
+ *
+ * Sizing logic: the rotating "Wallaroo's Trusted" eyebrow sits
+ * approximately 240px from the top of the page once the hero's
+ * vertical centring lands. The logo is pinned `top: 8px` so a 220px
+ * tall logo bottoms out at y≈228, leaving a ~12px clearance above
+ * the eyebrow's first glyph.
+ *
+ * If the hero ever grows or shrinks (more copy, smaller padding),
+ * this clearance changes — increase `top` or decrease `height` if
+ * the logo starts kissing the eyebrow again.
  *
  * `pointer-events: none` on the image so the parent <Link> still
  * receives clicks across the full slot rectangle.
@@ -59,7 +63,7 @@ main { padding-top: 0; }
   position: absolute;
   top: 8px;
   left: 0;
-  height: 140px;
+  height: 220px;
   width: auto;
   z-index: 11;
   filter: drop-shadow(0 8px 18px rgba(0,0,0,0.4));
@@ -549,8 +553,8 @@ main { padding-top: 0; }
     padding: 0 20px;
     gap: 16px;
   }
-  .v16-logo-slot { width: 120px; }
-  .v16-logo-img { height: 110px; top: 6px; }
+  .v16-logo-slot { width: 150px; }
+  .v16-logo-img { height: 140px; top: 6px; }
   .v16-navlinks { display: none; }
   .v16-hamburger { display: flex; }
 
