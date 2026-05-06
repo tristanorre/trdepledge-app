@@ -19,15 +19,17 @@ import { useEffect, useState } from "react";
 const TOWNS = ["Wallaroo's", "Kadina's", "Moonta's"] as const;
 
 // Walker images live in /public/images/walkers/. The strip cycles all
-// five on a 32s loop, staggered so they don't bunch up. If a walker
-// file is missing, Next.js serves a 404 image and the slot animates an
-// empty rectangle — visually quiet but not a layout break.
+// five on a 28s loop, staggered 5.6s apart so they don't bunch up.
+// `delay` is applied as a NEGATIVE animationDelay, which means the
+// walker appears mid-cycle on first paint instead of waiting at the
+// off-screen-left position for its turn — the strip looks alive
+// immediately on page load.
 const WALKERS: Array<{ src: string; alt: string; delay: number }> = [
   { src: "/images/walkers/01-shovel.png",       alt: "Thomas with a shovel",                           delay: 0 },
-  { src: "/images/walkers/02-mower.png",        alt: "Thomas pushing a mower",                         delay: 6.4 },
-  { src: "/images/walkers/03-mower-doug.png",   alt: "Thomas pushing a mower with Doug the galah",     delay: 12.8 },
-  { src: "/images/walkers/04-hedge-doug.png",   alt: "Thomas trimming a hedge while Doug watches",     delay: 19.2 },
-  { src: "/images/walkers/05-blower-doug.png",  alt: "Thomas using a leaf blower with Doug nearby",    delay: 25.6 },
+  { src: "/images/walkers/02-mower.png",        alt: "Thomas pushing a mower",                         delay: 5.6 },
+  { src: "/images/walkers/03-mower-doug.png",   alt: "Thomas pushing a mower with Doug the galah",     delay: 11.2 },
+  { src: "/images/walkers/04-hedge-doug.png",   alt: "Thomas trimming a hedge while Doug watches",     delay: 16.8 },
+  { src: "/images/walkers/05-blower-doug.png",  alt: "Thomas using a leaf blower with Doug nearby",    delay: 22.4 },
 ];
 
 export default function HomeHero() {
@@ -154,25 +156,24 @@ export default function HomeHero() {
         </div>
       </div>
 
-      {/* Walker strip — absolutely positioned at the bottom of the hero,
-          z-index below the hero photo so figures appear to walk behind
-          Thomas + Doug as they exit stage right. */}
+      {/* Walker strip — row 2 of the hero grid. Each <img> carries the
+          animation directly: a wrapper div would create a circular
+          sizing dependency between `width: auto` on the wrapper and
+          `height: 100%` on the img, causing figures to render at
+          native PNG height (~1300px) instead of 180px. The browser's
+          intrinsic-aspect-ratio sizing on <img> is reliable. */}
       <div className="v16-walker-strip" aria-hidden="true">
-        <div className="v16-walker-track">
-          {WALKERS.map((w) => (
-            <div
-              key={w.src}
-              className="v16-walker"
-              style={{ animationDelay: `-${w.delay}s` }}
-            >
-              {/* Plain <img>, not next/image, because each instance
-                  needs CSS `height: 100%` of the strip and we don't
-                  benefit from intrinsic-size optimisation here. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={w.src} alt={w.alt} loading="lazy" />
-            </div>
-          ))}
-        </div>
+        {WALKERS.map((w) => (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            key={w.src}
+            className="v16-walker"
+            src={w.src}
+            alt={w.alt}
+            loading="lazy"
+            style={{ animationDelay: `-${w.delay}s` }}
+          />
+        ))}
       </div>
     </section>
   );

@@ -128,23 +128,38 @@
 
 /* ── HERO ────────────────────────────────────────────────────────── */
 
+/*
+ * Two columns × two rows.
+ *   row 1 (1fr)    — left: text/CTAs/trust. right: photo (spans rows).
+ *   row 2 (200px)  — walker strip across both columns; photo spans
+ *                    over column 2 of this row, so walkers entering
+ *                    the right column are visually occluded by the
+ *                    photo (z-index 4) — that's the "disappear behind
+ *                    Thomas + Doug" effect the design calls for.
+ *
+ * Previous version layered the walker strip with `position: absolute;
+ * bottom: 0` over the hero columns, which collided with the trust
+ * badges on the left and required brittle z-index gymnastics to get
+ * right. The grid-row approach gives the walker strip a dedicated
+ * lane the rest of the layout can't intrude on.
+ */
 .v16-hero {
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 200px;
   min-height: 720px;
   background: var(--yellow);
-  /* Containing block for the absolute-positioned walker strip. */
   overflow: hidden;
 }
 
 .v16-hero-left {
-  padding: 96px 56px 56px 56px;
+  grid-column: 1;
+  grid-row: 1;
+  padding: 96px 56px 32px 56px;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  position: relative;
-  z-index: 5;
 }
 
 .v16-eyebrow {
@@ -300,14 +315,18 @@
 /* ── HERO RIGHT (PHOTO + OVERLAYS) ───────────────────────────────── */
 
 .v16-hero-right {
+  /* Spans both grid rows so the photo extends down through the walker
+     strip's vertical zone. z-index above the walker strip means
+     walkers passing through the right column get visually occluded
+     by the photo — the "disappear behind Thomas and Doug" effect. */
+  grid-column: 2;
+  grid-row: 1 / 3;
   position: relative;
-  /* Photo and its overlays must sit above the walker row. */
   z-index: 4;
 }
 .v16-hero-image {
   width: 100%;
   height: 100%;
-  max-height: 720px;
   object-fit: cover;
   object-position: center top;
   display: block;
@@ -424,55 +443,48 @@
 
 /* ── WALKER ROW ──────────────────────────────────────────────────── */
 /*
- * Sits at the bottom of the hero — below the trust badges, above the
- * lime services marquee. Spans the full hero width so figures appear
- * to walk across the page; the right-column hero photo (z-index 4+)
- * occludes them as they reach the right side, which is the requested
- * "disappear behind Thomas and Doug" effect.
+ * Lives in row 2 of the hero grid, spanning both columns. Walkers
+ * are <img> elements positioned absolutely INSIDE the strip, animated
+ * with a transform-only keyframe so the GPU handles compositing.
+ *
+ * Important: the animation is on the <img> itself (not a wrapper div).
+ * A wrapper with `width: auto` creates a circular sizing dependency
+ * with `<img height: 100%>`, which on at least one production browser
+ * pass made the figures render at native PNG height (~1300px) instead
+ * of the intended ~180px. The browser's native intrinsic-aspect-ratio
+ * sizing on <img> is reliable; the wrapper added nothing.
  */
 .v16-walker-strip {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 230px;
-  pointer-events: none;
-  z-index: 2;          /* below hero-right (z 4+), above hero background */
-  overflow: visible;   /* let figures slide off-screen-left without clipping the hero box itself */
-}
-.v16-walker-track {
+  grid-column: 1 / 3;
+  grid-row: 2;
   position: relative;
-  width: 100%;
-  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  /* overflow:hidden so a frame that's mid-transition off-screen-left
+     doesn't add a horizontal scrollbar on narrow viewports. The hero
+     itself also overflow:hidden's, so this is belt-and-braces. */
+  overflow: hidden;
 }
 .v16-walker {
   position: absolute;
   bottom: 0;
-  height: 220px;
+  left: 0;
+  height: 180px;
   width: auto;
-  /* Each figure starts off-screen-left and translates to off-screen-right.
-     Stagger via `animation-delay` (set inline per-walker). */
-  animation: v16-walk 32s linear infinite;
-  /* Subtle bob to suggest gait without going cartoonish. */
+  animation: v16-walk 28s linear infinite;
+  filter: drop-shadow(0 6px 14px rgba(10, 31, 61, 0.18));
+  pointer-events: none;
   will-change: transform;
 }
-.v16-walker img {
-  height: 100%;
-  width: auto;
-  display: block;
-  filter: drop-shadow(0 6px 14px rgba(10, 31, 61, 0.18));
-}
 @keyframes v16-walk {
-  /* `left` starts off-screen on the left, ends off-screen on the right.
-     We animate `transform: translateX` instead of `left` so the GPU
-     handles compositing — much smoother on low-power phones. */
-  from { transform: translateX(-260px); }
-  to   { transform: translateX(calc(100vw + 260px)); }
+  /* Off-screen left → off-screen right. 100vw makes the traversal
+     viewport-wide so figures actually exit the visible page at any
+     screen width. */
+  from { transform: translateX(-280px); }
+  to   { transform: translateX(calc(100vw + 80px)); }
 }
-@keyframes v16-walk-bob {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-3px); }
-}
-/* Pause when the user prefers reduced motion. The figures still appear,
-   just statically placed off-screen-left so the layout doesn't shift. */
+/* Honour prefers-reduced-motion. We still want the figures positioned
+   off-screen-left so the layout doesn't reflow; just kill the animation. */
 @media (prefers-reduced-motion: reduce) {
   .v16-walker { animation: none; transform: translateX(-9999px); }
 }
@@ -521,21 +533,30 @@
   .v16-navlinks { display: none; }
   .v16-hamburger { display: flex; }
 
+  /* Single column stack: text → photo → walker strip. The grid
+     reshapes from 2×2 to 1-column-3-rows so the walker strip still
+     gets its own dedicated lane at the bottom. */
   .v16-hero {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto 160px;
     min-height: 0;
   }
   .v16-hero-left {
+    grid-column: 1;
+    grid-row: 1;
     padding: 56px 24px 32px 24px;
     text-align: left;
   }
   .v16-hero-right {
+    grid-column: 1;
+    grid-row: 2;
     height: 480px;
-    /* On mobile the photo stacks under the text. The walker strip still
-       slides across the bottom of the photo. */
   }
-  .v16-walker-strip { height: 180px; }
-  .v16-walker { height: 170px; }
+  .v16-walker-strip {
+    grid-column: 1;
+    grid-row: 3;
+  }
+  .v16-walker { height: 140px; }
 
   .v16-doug-bubble {
     left: 16px;
