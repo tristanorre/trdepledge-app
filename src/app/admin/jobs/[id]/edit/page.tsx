@@ -25,6 +25,10 @@ export default async function EditJobPage({ params }: { params: { id: string } }
     <div>
       <Link href={`/admin/jobs/${job.id}`} style={backLinkStyle}>← Back to job</Link>
       <h1 style={titleStyle}>Edit job</h1>
+      {/* No `redirectAfter` prop — JobForm already defaults to
+          `/admin/jobs/<id>` after a successful save, and passing a
+          function from a Server Component to a Client Component
+          violates React's RSC rules. */}
       <JobForm
         initial={job}
         workers={workers}
@@ -33,7 +37,6 @@ export default async function EditJobPage({ params }: { params: { id: string } }
         showStatus
         showDelete
         deleteUrl={`/api/admin/jobs/${job.id}`}
-        redirectAfter={(j) => `/admin/jobs/${j.id}`}
       />
     </div>
   );
