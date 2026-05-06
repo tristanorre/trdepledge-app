@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { exchangeCodeForTokens } from "@/lib/xero";
 
@@ -33,7 +34,14 @@ export async function GET(req: Request) {
     .find((c) => c.startsWith("xero_oauth_state="))
     ?.slice("xero_oauth_state=".length);
 
-  if (!code || !state || !cookieState || cookieState !== state) {
+  // Constant-time compare. State is 24 random bytes so timing attacks
+  // are theoretical here, but it's the textbook hygiene for this kind
+  // of secret comparison.
+  const stateMatches = !!code && !!state && !!cookieState
+    && state.length === cookieState.length
+    && crypto.timingSafeEqual(Buffer.from(state), Buffer.from(cookieState));
+
+  if (!stateMatches) {
     settingsUrl.searchParams.set("xero", "error:state_mismatch");
     return NextResponse.redirect(settingsUrl);
   }

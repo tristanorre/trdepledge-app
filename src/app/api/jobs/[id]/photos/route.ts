@@ -74,10 +74,17 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const column = kind === "before" ? "photos_before" : "photos_after";
   const next = [...((job as any)[column] ?? []), path];
-  const { error: updateErr } = await supabase
+  // Re-apply the worker scoping on the UPDATE too. Without this, an
+  // admin who un-assigns the worker between the read above and this
+  // write could let the worker still mutate the row.
+  let updateQuery = supabase
     .from("jobs")
     .update({ [column]: next })
     .eq("id", params.id);
+  if (session.user.role === "worker") {
+    updateQuery = updateQuery.contains("assigned_worker_ids", [session.user.id]);
+  }
+  const { error: updateErr } = await updateQuery;
 
   if (updateErr) {
     console.error("[photos POST] update job", updateErr);

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
+import { sanitiseLikeText } from "@/lib/sanitise";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,8 +31,8 @@ export async function GET(req: Request) {
     query = query.eq("type", type);
   }
   if (q) {
-    const safe = q.replace(/[,()]/g, " ");
-    query = query.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
+    const safe = sanitiseLikeText(q);
+    if (safe) query = query.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
   }
 
   const { data, error } = await query;

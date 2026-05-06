@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServiceClient } from "@/lib/supabase";
 
 // Two credential paths share one provider so the login form can submit
@@ -10,6 +11,14 @@ import { getServiceClient } from "@/lib/supabase";
 // Workers select their name from a list before entering the PIN — the
 // PIN alone (4 digits) is not unique. Selection narrows to one user;
 // bcrypt verifies the PIN against that user's pin_hash.
+//
+// Lockout (added Slice 9): after MAX_FAILED consecutive failures the
+// account is locked for LOCKOUT_MINUTES. Mitigates the small PIN
+// keyspace — without it, 10 000 combos × 80ms bcrypt cost = ~13 min
+// of online guessing per worker.
+const MAX_FAILED = 5;
+const LOCKOUT_MINUTES = 15;
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 14 /* 14 days */ },
   pages: { signIn: "/login" },
@@ -41,16 +50,24 @@ export const authOptions: NextAuthOptions = {
 
           const { data: user, error } = await supabase
             .from("users")
-            .select("id, name, email, role, password_hash, active")
+            .select("id, name, email, role, password_hash, active, failed_login_attempts, locked_until")
             .eq("email", email)
             .eq("role", "admin")
             .eq("active", true)
             .maybeSingle();
           if (error || !user || !user.password_hash) return null;
 
-          const ok = await bcrypt.compare(password, user.password_hash);
-          if (!ok) return null;
+          if (isLocked(user.locked_until)) {
+            throw new Error("Account locked. Try again in 15 minutes.");
+          }
 
+          const ok = await bcrypt.compare(password, user.password_hash);
+          if (!ok) {
+            await recordFailure(supabase, user.id, user.failed_login_attempts);
+            return null;
+          }
+
+          await resetFailures(supabase, user.id);
           return { id: user.id, name: user.name, email: user.email, role: "admin" };
         }
 
@@ -61,16 +78,24 @@ export const authOptions: NextAuthOptions = {
 
           const { data: user, error } = await supabase
             .from("users")
-            .select("id, name, role, pin_hash, active")
+            .select("id, name, role, pin_hash, active, failed_login_attempts, locked_until")
             .eq("id", workerId)
             .eq("role", "worker")
             .eq("active", true)
             .maybeSingle();
           if (error || !user || !user.pin_hash) return null;
 
-          const ok = await bcrypt.compare(pin, user.pin_hash);
-          if (!ok) return null;
+          if (isLocked(user.locked_until)) {
+            throw new Error("Account locked. Try again in 15 minutes.");
+          }
 
+          const ok = await bcrypt.compare(pin, user.pin_hash);
+          if (!ok) {
+            await recordFailure(supabase, user.id, user.failed_login_attempts);
+            return null;
+          }
+
+          await resetFailures(supabase, user.id);
           return { id: user.id, name: user.name, email: null, role: "worker" };
         }
 
@@ -99,3 +124,31 @@ export const authOptions: NextAuthOptions = {
     },
   },
 };
+
+function isLocked(locked_until: string | null): boolean {
+  if (!locked_until) return false;
+  return new Date(locked_until).getTime() > Date.now();
+}
+
+async function recordFailure(supabase: SupabaseClient, userId: string, currentFailures: number): Promise<void> {
+  const next = currentFailures + 1;
+  const patch: Record<string, unknown> = { failed_login_attempts: next };
+  if (next >= MAX_FAILED) {
+    patch.locked_until = new Date(Date.now() + LOCKOUT_MINUTES * 60_000).toISOString();
+  }
+  // Best-effort — if the update fails we still return null so login is
+  // denied. The brute-force window widens slightly, not catastrophically.
+  await supabase.from("users").update(patch).eq("id", userId).then(({ error }) => {
+    if (error) console.error("[auth] recordFailure", error);
+  });
+}
+
+async function resetFailures(supabase: SupabaseClient, userId: string): Promise<void> {
+  await supabase
+    .from("users")
+    .update({ failed_login_attempts: 0, locked_until: null })
+    .eq("id", userId)
+    .then(({ error }) => {
+      if (error) console.error("[auth] resetFailures", error);
+    });
+}

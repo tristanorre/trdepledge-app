@@ -69,8 +69,13 @@ export async function GET(req: Request) {
 }
 
 function isAuthorisedCron(req: Request): boolean {
+  // Hard-fail without a secret — see the matching helper in
+  // job-reminders/route.ts for the rationale.
   const secret = process.env.CRON_SECRET;
-  if (!secret) return !!req.headers.get("authorization");
+  if (!secret) {
+    console.error("[cron] CRON_SECRET not set — refusing to run");
+    return false;
+  }
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 

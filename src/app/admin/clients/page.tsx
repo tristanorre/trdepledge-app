@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
+import { sanitiseLikeText } from "@/lib/sanitise";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +35,8 @@ export default async function AdminClientsPage({
       .limit(500);
     if (searchParams.type) query = query.eq("type", searchParams.type);
     if (q) {
-      const safe = q.replace(/[,()]/g, " ");
-      query = query.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
+      const safe = sanitiseLikeText(q);
+      if (safe) query = query.or(`name.ilike.%${safe}%,email.ilike.%${safe}%`);
     }
     const { data } = await query;
     clients = (data ?? []) as Client[];

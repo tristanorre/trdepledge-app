@@ -2,6 +2,7 @@
 
 import { signIn } from "next-auth/react";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -163,6 +164,14 @@ export default function LoginForm() {
         </button>
 
         {error && <div className="form-error" role="alert" style={{ textAlign: "center" }}>⚠ {error}</div>}
+
+        {mode === "admin" && (
+          <div style={{ marginTop: 16, textAlign: "center" }}>
+            <Link href="/forgot-password" style={{ fontSize: 13, color: "var(--gray)", textDecoration: "underline" }}>
+              Forgot password?
+            </Link>
+          </div>
+        )}
       </form>
     </div>
   );

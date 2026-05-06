@@ -82,11 +82,13 @@ export async function GET(req: Request) {
 }
 
 function isAuthorisedCron(req: Request): boolean {
+  // Hard-fail if no secret is configured. Soft-failing to "any
+  // authorization header works" lets anyone trigger SMS / push fan-out
+  // by curling the endpoint.
   const secret = process.env.CRON_SECRET;
   if (!secret) {
-    // No secret set — allow Vercel-internal calls only by checking the
-    // bearer header presence. Vercel Cron always sends one.
-    return !!req.headers.get("authorization");
+    console.error("[cron] CRON_SECRET not set — refusing to run");
+    return false;
   }
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }

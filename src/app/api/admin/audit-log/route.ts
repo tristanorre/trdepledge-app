@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
+import { AUDIT_ACTIONS } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,16 @@ export async function GET(req: Request) {
     .limit(limit);
 
   if (before) q = q.lt("timestamp", before);
-  if (actionPrefix) q = q.like("action", `${actionPrefix}%`);
+  if (actionPrefix) {
+    // Allowlist against the known vocabulary OR the table's stable
+    // top-level prefixes. Stops admins (or anyone with admin auth) from
+    // crafting pathological LIKE patterns against the log.
+    const knownPrefixes = new Set(AUDIT_ACTIONS as readonly string[]);
+    knownPrefixes.add("asset");
+    if (knownPrefixes.has(actionPrefix)) {
+      q = q.like("action", `${actionPrefix}%`);
+    }
+  }
 
   const { data, error } = await q;
   if (error) {

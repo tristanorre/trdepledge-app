@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { writeAuditEntry } from "@/lib/audit";
+import { sanitiseLikeText } from "@/lib/sanitise";
 import {
   ASSET_CATEGORIES, ASSET_CONDITIONS,
   type AssetCategory, type AssetCondition,
@@ -47,8 +48,8 @@ export async function GET(req: Request) {
   if (q) {
     // Match name OR identifier. PostgREST's `or` requires comma-separated
     // conditions; ilike for case-insensitive substring.
-    const escaped = q.replace(/[,()]/g, " ");
-    query = query.or(`name.ilike.%${escaped}%,identifier.ilike.%${escaped}%`);
+    const safe = sanitiseLikeText(q);
+    if (safe) query = query.or(`name.ilike.%${safe}%,identifier.ilike.%${safe}%`);
   }
 
   const { data, error } = await query;

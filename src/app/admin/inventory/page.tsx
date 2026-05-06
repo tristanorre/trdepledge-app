@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
+import { sanitiseLikeText } from "@/lib/sanitise";
 import ConditionPill from "@/components/ConditionPill";
 import {
   ASSET_CATEGORIES, ASSET_CONDITIONS,
@@ -51,8 +52,8 @@ export default async function AdminInventoryPage({
     else if (searchParams.worker)       assetsQuery = assetsQuery.eq("assigned_to", searchParams.worker);
 
     if (q) {
-      const escaped = q.replace(/[,()]/g, " ");
-      assetsQuery = assetsQuery.or(`name.ilike.%${escaped}%,identifier.ilike.%${escaped}%`);
+      const safe = sanitiseLikeText(q);
+      if (safe) assetsQuery = assetsQuery.or(`name.ilike.%${safe}%,identifier.ilike.%${safe}%`);
     }
 
     const [{ data: a }, { data: w }] = await Promise.all([
