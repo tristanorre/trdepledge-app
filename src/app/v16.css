@@ -38,19 +38,29 @@ main { padding-top: 0; }
 
 .v16-logo-slot {
   position: relative;
-  width: 280px;
+  width: 160px;
   height: 100%;
   flex-shrink: 0;
 }
-/* Logo bursts down out of the bar onto the yellow hero — the visual
-   anchor of v16. `pointer-events: none` on the image so the parent
-   <Link> still receives clicks across the full slot rectangle. */
+/*
+ * Logo bursts down out of the bar onto the yellow hero — the visual
+ * anchor of v16. Sized via explicit height (not width: 100% of slot)
+ * so the overhang is predictable: 140px tall with 8px top offset =
+ * 148px from page top. Against a 110px nav, that's a deliberate
+ * ~38px overhang into the yellow hero — enough presence to read as
+ * intentional, small enough to clear the rotating "Wallaroo's
+ * Trusted" eyebrow below it. The previous `width: 100%` formula
+ * gave a 280px-tall logo that smothered the eyebrow text.
+ *
+ * `pointer-events: none` on the image so the parent <Link> still
+ * receives clicks across the full slot rectangle.
+ */
 .v16-logo-img {
   position: absolute;
-  top: 12px;
+  top: 8px;
   left: 0;
-  width: 100%;
-  height: auto;
+  height: 140px;
+  width: auto;
   z-index: 11;
   filter: drop-shadow(0 8px 18px rgba(0,0,0,0.4));
   pointer-events: none;
@@ -539,7 +549,8 @@ main { padding-top: 0; }
     padding: 0 20px;
     gap: 16px;
   }
-  .v16-logo-slot { width: 200px; }
+  .v16-logo-slot { width: 120px; }
+  .v16-logo-img { height: 110px; top: 6px; }
   .v16-navlinks { display: none; }
   .v16-hamburger { display: flex; }
 
