@@ -36,8 +36,9 @@ export default function HomePage() {
       <HomeHero />
       <HeroMarquee />
 
-      {/* DOUG STRIP */}
-      <section style={{ padding: "64px 0", background: "white" }}>
+      {/* DOUG STRIP — yellow band so v16's hero colour reads further down
+          the page instead of stopping abruptly after the bottom marquee. */}
+      <section style={{ padding: "64px 0", background: "var(--yellow)" }}>
         <div className="container">
           <div className="doug-strip">
             <div className="doug-strip-text">

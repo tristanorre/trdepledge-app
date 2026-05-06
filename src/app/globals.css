@@ -564,7 +564,10 @@ main { padding-top: var(--nav-h); }
 .contact-detail a:hover { opacity: 0.7; }
 
 /* ── SERVICE AREAS ────────────────────────────── */
-.areas-section { padding: 100px 0; background: var(--off); }
+/* v16 cue: service areas band switches from off-white to yellow, so the
+   page reads navy → yellow → navy as you scroll instead of fading to
+   beige in the lower half. */
+.areas-section { padding: 100px 0; background: var(--yellow); }
 .areas-header { text-align: center; margin-bottom: 56px; }
 .areas-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .area-card {

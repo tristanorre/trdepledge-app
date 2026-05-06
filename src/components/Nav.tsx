@@ -34,12 +34,19 @@ export default function Nav() {
     <>
       <nav className="v16-nav" aria-label="Primary">
         <Link href="/" className="v16-logo-slot" aria-label="T.R. Depledge home">
+          {/*
+            v16 brand mark — navy badge with the script "TR DEPLEDGE"
+            wordmark, "Gardening & Maintenance" subline, and the
+            "EST. 2020 · WALLAROO · YORKE PENINSULA" tagline. This
+            replaces the older /logo.svg green-monogram mark on the
+            marketing site.
+          */}
           <Image
-            src="/logo.svg"
+            src="/images/logo-v16.png"
             alt="T.R. Depledge Gardening & Maintenance"
             className="v16-logo-img"
-            width={690}
-            height={390}
+            width={1053}
+            height={1052}
             priority
           />
         </Link>
