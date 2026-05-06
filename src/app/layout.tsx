@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, DM_Serif_Display } from "next/font/google";
+import { DM_Sans, DM_Serif_Display, Caveat } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 
@@ -15,6 +15,16 @@ const dmSerifDisplay = DM_Serif_Display({
   weight: ["400"],
   style: ["normal", "italic"],
   variable: "--font-dm-serif-display",
+  display: "swap",
+});
+
+// Caveat — handwriting accent. Used for v16's script "Maintenance" word,
+// Doug's speech bubble, and Thomas's signature card. Swap-display so the
+// page never blocks waiting for it.
+const caveat = Caveat({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--font-caveat",
   display: "swap",
 });
 
@@ -46,7 +56,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${dmSerifDisplay.variable}`}>
+    <html lang="en" className={`${dmSans.variable} ${dmSerifDisplay.variable} ${caveat.variable}`}>
       <body>
         <ServiceWorkerRegister />
         {children}

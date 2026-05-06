@@ -1,78 +1,40 @@
 import Link from "next/link";
 import Image from "next/image";
-import HeroCarousel from "@/components/HeroCarousel";
-import TownRotator from "@/components/TownRotator";
-import Marquee from "@/components/Marquee";
+import HomeHero from "@/components/HomeHero";
 import Reveal from "@/components/Reveal";
+
+// Service-name strip that scrolls along the bottom of v16's hero. Pure
+// markup so it stays a server component — animation is CSS-only.
+const MARQUEE_TERMS = [
+  "Lawn Mowing", "Hedge Trimming", "Garden Maintenance", "NDIS Approved",
+  "Yard Revamps", "Instant Lawns", "Aged Care", "Police Checked", "Landscaping",
+];
+
+function HeroMarquee() {
+  // Render each list twice so the CSS `translateX(-50%)` keyframe yields
+  // a seamless loop (the second copy slides into where the first started).
+  const doubled = [...MARQUEE_TERMS, ...MARQUEE_TERMS];
+  return (
+    <div className="v16-marquee" aria-hidden="true">
+      <div className="v16-marquee-track">
+        {doubled.map((t, i) => (
+          <span key={`${t}-${i}`}>
+            {t}
+            {i < doubled.length - 1 && <span className="v16-marquee-dot"> ● </span>}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function HomePage() {
   return (
     <>
-      {/* HERO */}
-      <section className="hero">
-        <div className="hero-bg" />
-        <div className="hero-grid" />
-        <div className="container">
-          <div className="hero-inner">
-            <div className="hero-content">
-              <div className="hero-badge">
-                <span className="hero-badge-dot" />
-                Proudly Local · Copper Coast SA
-              </div>
-              <h1 className="hero-title">
-                <span className="hero-title-line1">
-                  <TownRotator />
-                  <span className="trusted-word"> Trusted</span>
-                </span>
-                Garden &<br /><em>Maintenance</em><br />Experts
-              </h1>
-              <p className="hero-desc">
-                Across Wallaroo, Kadina, Moonta and the full Yorke Peninsula — T.R. Depledge delivers professional gardening and outdoor maintenance you can count on. Police-checked staff, fair pricing, real results.
-              </p>
-              <div className="hero-actions">
-                <Link href="/contact" className="btn btn-primary btn-lg">Book a Job Today</Link>
-                <Link href="/services" className="btn btn-secondary btn-lg">Our Services</Link>
-              </div>
-              <div className="hero-values">
-                <div className="hero-value">Trustworthy</div>
-                <div className="hero-value">Hardworking</div>
-                <div className="hero-value">Local</div>
-                <div className="hero-value">Police Checked</div>
-              </div>
-            </div>
-
-            <div className="hero-visual">
-              <div className="hero-portrait-wrap">
-                <Image
-                  src="/images/thomas-portrait.jpg"
-                  alt="Thomas Depledge — Gardens that impress, maintenance you can trust"
-                  className="hero-portrait-img"
-                  width={800}
-                  height={1000}
-                  priority
-                />
-              </div>
-              <HeroCarousel />
-              <div className="hero-stats">
-                <div className="hero-stat">
-                  <div className="hero-stat-num">30+</div>
-                  <div className="hero-stat-label">Regular Clients</div>
-                </div>
-                <div className="hero-stat">
-                  <div className="hero-stat-num">80+</div>
-                  <div className="hero-stat-label">Homes Serviced</div>
-                </div>
-                <div className="hero-stat">
-                  <div className="hero-stat-num">2020</div>
-                  <div className="hero-stat-label">Est. Wallaroo</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <Marquee />
+      {/* v16 hero — yellow background, big headline, Doug speech bubble,
+          walker strip animating across the bottom. */}
+      <HomeHero />
+      <HeroMarquee />
 
       {/* DOUG STRIP */}
       <section style={{ padding: "64px 0", background: "white" }}>
@@ -141,7 +103,7 @@ export default function HomePage() {
                   <div className="milestone-label">Full-Time Operation</div>
                 </div>
                 <div className="milestone">
-                  <div className="milestone-year">6</div>
+                  <div className="milestone-year">5</div>
                   <div className="milestone-label">Team Members</div>
                 </div>
               </Reveal>

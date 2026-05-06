@@ -1,0 +1,573 @@
+/*
+ * v16 marketing system — yellow hero, lime accents, Caveat handwriting.
+ *
+ * This file extends globals.css; it doesn't replace it. The v16-specific
+ * classes are namespaced with `v16-` so they can't accidentally collide
+ * with existing site/admin/worker styles. Imported once, in the
+ * marketing route group's layout.
+ *
+ * Source of truth for design choices is trdepledge_hero_v16.html — port
+ * adjustments noted inline where I diverged from the mock.
+ */
+
+/* ── NAV ─────────────────────────────────────────────────────────── */
+
+.v16-nav {
+  background: var(--navy);
+  height: 110px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+  gap: 32px;
+  /* Allow the logo to overhang downward without getting clipped. */
+  overflow: visible;
+}
+
+.v16-logo-slot {
+  position: relative;
+  width: 280px;
+  height: 100%;
+  flex-shrink: 0;
+}
+/* Logo bursts down out of the bar onto the yellow hero — the visual
+   anchor of v16. `pointer-events: none` on the image so the parent
+   <Link> still receives clicks across the full slot rectangle. */
+.v16-logo-img {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 100%;
+  height: auto;
+  z-index: 11;
+  filter: drop-shadow(0 8px 18px rgba(0,0,0,0.4));
+  pointer-events: none;
+}
+
+.v16-navlinks {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  flex: 1;
+  justify-content: center;
+  list-style: none;
+}
+.v16-navlinks a {
+  color: white;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  position: relative;
+  padding: 6px 0;
+  transition: color 0.18s ease;
+}
+.v16-navlinks a:hover { color: var(--lime); }
+.v16-navlinks a.active { color: var(--lime); }
+.v16-navlinks a.active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -4px;
+  height: 3px;
+  background: var(--lime);
+  border-radius: 2px;
+}
+
+.v16-phone {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: white;
+  flex-shrink: 0;
+}
+.v16-phone-icon {
+  width: 44px; height: 44px;
+  background: transparent;
+  border: 2px solid var(--yellow);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--yellow);
+  flex-shrink: 0;
+}
+.v16-phone-text { line-height: 1.05; }
+.v16-phone-num {
+  color: white;
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+.v16-phone-sub {
+  color: var(--yellow);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-top: 2px;
+}
+
+/* Hamburger — surfaced on narrow widths only. */
+.v16-hamburger {
+  display: none;
+  background: transparent;
+  border: 2px solid var(--yellow);
+  border-radius: 8px;
+  width: 44px; height: 44px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+.v16-hamburger span {
+  height: 2px;
+  background: var(--yellow);
+  border-radius: 2px;
+}
+
+/* ── HERO ────────────────────────────────────────────────────────── */
+
+.v16-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 720px;
+  background: var(--yellow);
+  /* Containing block for the absolute-positioned walker strip. */
+  overflow: hidden;
+}
+
+.v16-hero-left {
+  padding: 96px 56px 56px 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 5;
+}
+
+.v16-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--navy);
+  margin-bottom: 24px;
+  align-self: flex-start;
+}
+.v16-eyebrow-stroke {
+  width: 38px;
+  height: 6px;
+  background: var(--lime);
+  border-radius: 4px;
+  transform: rotate(-2deg);
+}
+
+.v16-rotate-town {
+  display: inline-block;
+  min-width: 105px;
+  text-align: right;
+  color: var(--green-deep);
+  font-weight: 900;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.v16-rotate-town.fading {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+.v16-headline {
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: -2.5px;
+  color: var(--navy);
+  margin-bottom: 26px;
+  font-family: var(--font-body);
+}
+.v16-h-big {
+  font-size: clamp(56px, 7vw, 96px);
+  line-height: 0.92;
+  display: block;
+}
+.v16-h-script {
+  font-family: var(--font-script);
+  font-weight: 700;
+  font-size: clamp(70px, 8.4vw, 116px);
+  color: var(--green-deep);
+  line-height: 0.85;
+  display: block;
+  margin: 4px 0 4px -4px;
+  transform: rotate(-2deg);
+  letter-spacing: -2px;
+}
+
+.v16-desc {
+  font-size: 18px;
+  line-height: 1.55;
+  color: rgba(10, 31, 61, 0.85);
+  margin-bottom: 30px;
+  max-width: 540px;
+  font-weight: 500;
+}
+
+.v16-actions {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 36px;
+  flex-wrap: wrap;
+}
+.v16-btn {
+  padding: 16px 28px;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 10px;
+  transition: transform 0.18s, box-shadow 0.18s;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: 0.3px;
+  text-decoration: none;
+}
+.v16-btn-primary { background: var(--navy); color: white; }
+.v16-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(10, 31, 61, 0.3);
+}
+.v16-btn-secondary {
+  background: transparent;
+  color: var(--navy);
+  border: 2px solid var(--navy);
+}
+.v16-btn-secondary:hover { background: var(--navy); color: white; }
+.v16-btn-icon {
+  width: 26px; height: 26px;
+  background: var(--lime);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--navy);
+}
+.v16-btn-secondary .v16-btn-icon { background: var(--navy); color: white; }
+.v16-btn-secondary:hover .v16-btn-icon { background: var(--lime); color: var(--navy); }
+
+/* ── TRUST LINE ──────────────────────────────────────────────────── */
+
+.v16-trustline {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.v16-trust-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.15;
+}
+.v16-trust-icon {
+  width: 38px; height: 38px;
+  background: var(--navy);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.v16-trust-icon svg { width: 20px; height: 20px; fill: var(--lime); }
+.v16-trust-icon-ndis {
+  background: #1A4FB5;
+  color: white;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}
+.v16-trust-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(10, 31, 61, 0.2);
+}
+
+/* ── HERO RIGHT (PHOTO + OVERLAYS) ───────────────────────────────── */
+
+.v16-hero-right {
+  position: relative;
+  /* Photo and its overlays must sit above the walker row. */
+  z-index: 4;
+}
+.v16-hero-image {
+  width: 100%;
+  height: 100%;
+  max-height: 720px;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
+.v16-doug-bubble {
+  position: absolute;
+  top: 110px;
+  left: -110px;
+  background: white;
+  padding: 16px 20px 14px;
+  border-radius: 22px;
+  box-shadow: 0 10px 26px rgba(10, 31, 61, 0.22);
+  border: 2px solid var(--navy);
+  max-width: 230px;
+  z-index: 6;
+}
+.v16-doug-bubble-text {
+  font-family: var(--font-script);
+  font-weight: 600;
+  font-size: 21px;
+  color: var(--navy);
+  line-height: 1.15;
+}
+.v16-doug-bubble-from {
+  font-family: var(--font-script);
+  font-weight: 700;
+  font-size: 15px;
+  color: rgba(10, 31, 61, 0.7);
+  margin-top: 6px;
+}
+.v16-doug-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -12px;
+  right: 28px;
+  width: 20px; height: 20px;
+  background: white;
+  border-right: 2px solid var(--navy);
+  border-bottom: 2px solid var(--navy);
+  transform: rotate(45deg);
+}
+
+.v16-right-stack {
+  position: absolute;
+  top: 50%;
+  right: 60px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 14px;
+  z-index: 6;
+}
+.v16-sig-card {
+  background: white;
+  padding: 14px 22px 12px;
+  border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(10, 31, 61, 0.28);
+  border: 2px solid var(--navy);
+  transform: rotate(-2deg);
+}
+.v16-sig-name {
+  font-family: var(--font-script);
+  font-weight: 700;
+  font-size: 28px;
+  color: var(--navy);
+  line-height: 0.9;
+  letter-spacing: -0.5px;
+}
+.v16-sig-role {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(10, 31, 61, 0.7);
+  letter-spacing: 1.5px;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+.v16-stat-ribbon {
+  background: var(--navy);
+  color: white;
+  padding: 10px 18px 10px 14px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 20px rgba(10, 31, 61, 0.32);
+  transform: rotate(-2deg);
+}
+.v16-stat-leaf {
+  width: 28px; height: 28px;
+  background: var(--lime);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.v16-stat-leaf svg { width: 14px; height: 14px; fill: var(--navy); }
+.v16-stat-num {
+  font-weight: 900;
+  font-size: 24px;
+  color: var(--yellow);
+  line-height: 0.9;
+  letter-spacing: -0.5px;
+}
+.v16-stat-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* ── WALKER ROW ──────────────────────────────────────────────────── */
+/*
+ * Sits at the bottom of the hero — below the trust badges, above the
+ * lime services marquee. Spans the full hero width so figures appear
+ * to walk across the page; the right-column hero photo (z-index 4+)
+ * occludes them as they reach the right side, which is the requested
+ * "disappear behind Thomas and Doug" effect.
+ */
+.v16-walker-strip {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 230px;
+  pointer-events: none;
+  z-index: 2;          /* below hero-right (z 4+), above hero background */
+  overflow: visible;   /* let figures slide off-screen-left without clipping the hero box itself */
+}
+.v16-walker-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.v16-walker {
+  position: absolute;
+  bottom: 0;
+  height: 220px;
+  width: auto;
+  /* Each figure starts off-screen-left and translates to off-screen-right.
+     Stagger via `animation-delay` (set inline per-walker). */
+  animation: v16-walk 32s linear infinite;
+  /* Subtle bob to suggest gait without going cartoonish. */
+  will-change: transform;
+}
+.v16-walker img {
+  height: 100%;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 6px 14px rgba(10, 31, 61, 0.18));
+}
+@keyframes v16-walk {
+  /* `left` starts off-screen on the left, ends off-screen on the right.
+     We animate `transform: translateX` instead of `left` so the GPU
+     handles compositing — much smoother on low-power phones. */
+  from { transform: translateX(-260px); }
+  to   { transform: translateX(calc(100vw + 260px)); }
+}
+@keyframes v16-walk-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+/* Pause when the user prefers reduced motion. The figures still appear,
+   just statically placed off-screen-left so the layout doesn't shift. */
+@media (prefers-reduced-motion: reduce) {
+  .v16-walker { animation: none; transform: translateX(-9999px); }
+}
+
+/* ── BOTTOM SERVICE MARQUEE ──────────────────────────────────────── */
+
+.v16-marquee {
+  background: var(--lime);
+  padding: 18px 0;
+  white-space: nowrap;
+  border-top: 3px solid var(--navy);
+  overflow: hidden;
+  position: relative;
+}
+.v16-marquee-track {
+  display: inline-flex;
+  gap: 56px;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--navy);
+  white-space: nowrap;
+  align-items: center;
+  animation: v16-marquee-scroll 50s linear infinite;
+  padding-right: 56px;
+}
+.v16-marquee-track > span { flex-shrink: 0; }
+.v16-marquee-dot { color: var(--navy); opacity: 0.4; }
+@keyframes v16-marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.v16-marquee:hover .v16-marquee-track {
+  animation-play-state: paused;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .v16-nav {
+    padding: 0 20px;
+    gap: 16px;
+  }
+  .v16-logo-slot { width: 200px; }
+  .v16-navlinks { display: none; }
+  .v16-hamburger { display: flex; }
+
+  .v16-hero {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .v16-hero-left {
+    padding: 56px 24px 32px 24px;
+    text-align: left;
+  }
+  .v16-hero-right {
+    height: 480px;
+    /* On mobile the photo stacks under the text. The walker strip still
+       slides across the bottom of the photo. */
+  }
+  .v16-walker-strip { height: 180px; }
+  .v16-walker { height: 170px; }
+
+  .v16-doug-bubble {
+    left: 16px;
+    top: 24px;
+    max-width: 200px;
+  }
+  .v16-right-stack {
+    right: 16px;
+    top: auto;
+    bottom: 24px;
+    transform: none;
+  }
+}
+
+/* Mobile drawer for the hidden nav links. The Nav component toggles
+   `is-open` on this element; CSS owns the transition. */
+.v16-mobile-menu {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--navy);
+  padding: 16px 20px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.v16-mobile-menu.is-open { display: flex; }
+.v16-mobile-menu a {
+  color: white;
+  padding: 12px 4px;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.v16-mobile-menu a:last-child { border-bottom: none; }

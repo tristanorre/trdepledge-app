@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ScrollTop from "@/components/ScrollTop";
+// v16 visual system — yellow hero, lime accents, Caveat handwriting.
+// Only loaded inside the marketing route group, so the field-app and
+// admin/worker routes don't pay for these styles.
+import "@/app/v16.css";
 
 // Marketing-specific metadata. Pages override `title` and `description`.
 export const metadata: Metadata = {

@@ -3,7 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Gallery",
+  title: "Our Work",
   description:
     "Real before-and-after results from T.R. Depledge Gardening & Maintenance projects across the Copper Coast and Yorke Peninsula.",
 };

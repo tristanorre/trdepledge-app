@@ -29,6 +29,12 @@
 
   --font-display: var(--font-dm-serif-display), Georgia, serif;
   --font-body:    var(--font-dm-sans), system-ui, sans-serif;
+  --font-script:  var(--font-caveat), "Comic Sans MS", cursive;
+
+  /* v16 accent — forest green for the script "Maintenance" word and
+     other handwriting accents. Distinct from --lime, which is the
+     bright callout colour. */
+  --green-deep: #1A6B1A;
 
   --max: 1200px;
   --nav-h: 72px;
@@ -574,7 +580,22 @@ main { padding-top: var(--nav-h); }
 }
 
 /* ── FOOTER ───────────────────────────────────── */
-footer { background: #060F1E; padding: 72px 0 32px; color: rgba(255,255,255,0.5); }
+/* v16 cue: lime top border + Caveat brand flourish (.footer-flourish).
+   Everything else stays as-is so the existing layout still works. */
+footer {
+  background: #060F1E;
+  padding: 72px 0 32px;
+  color: rgba(255,255,255,0.5);
+  border-top: 4px solid var(--lime);
+}
+.footer-flourish {
+  font-family: var(--font-script);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--lime);
+  margin-bottom: 6px;
+  line-height: 1;
+}
 .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px; margin-bottom: 56px; }
 .footer-logo { margin-bottom: 20px; }
 .footer-logo svg, .footer-logo img { height: 64px; width: auto; }

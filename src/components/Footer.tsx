@@ -15,6 +15,8 @@ export default function Footer() {
                 height={390}
               />
             </div>
+            {/* Caveat-script flourish — small v16 cue carried through to the footer. */}
+            <div className="footer-flourish">From Wallaroo, with care.</div>
             <p className="footer-desc">
               Proudly local, supporting locals, employing locals. Serving Wallaroo, Kadina, Moonta and the Copper Coast since 2020.
             </p>
@@ -32,9 +34,10 @@ export default function Footer() {
             <ul className="footer-links">
               <li><Link href="/">Home</Link></li>
               <li><Link href="/services">Services</Link></li>
+              <li><Link href="/about">About</Link></li>
+              <li><Link href="/gallery">Our Work</Link></li>
               <li><Link href="/ndis-aged-care">NDIS & Aged Care</Link></li>
-              <li><Link href="/about">About Us</Link></li>
-              <li><Link href="/gallery">Gallery</Link></li>
+              <li><Link href="/reviews">Reviews</Link></li>
               <li><Link href="/contact">Contact</Link></li>
             </ul>
           </div>
