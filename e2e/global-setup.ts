@@ -21,20 +21,33 @@ export default async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();
 
   // ── Admin ───────────────────────────────────────────────────────
-  // Tolerant of login failure so the `anon` project still runs even
-  // when Supabase isn't configured. The admin/mobile-worker projects
-  // will see their own auth-required pages bounce to /login.
-  await tryLogin({
-    browser, baseURL, authDir, file: "admin.json",
-    setup: async (page) => {
-      await page.goto("/login");
-      await page.getByRole("tab", { name: "Admin" }).click();
-      await page.getByLabel("Email").fill(ADMIN_EMAIL);
-      await page.getByLabel("Password").fill(ADMIN_PASSWORD);
-      await page.getByRole("button", { name: /Sign in/i }).click();
-      await page.waitForURL(/\/admin(\?|$)/, { timeout: 30_000 });
-    },
-  });
+  // Only attempt admin login if E2E_ADMIN_PASSWORD is explicitly set.
+  // In production the admin password rotates immediately after seed,
+  // and attempting the seed default repeatedly would trip the 5-fail
+  // account lockout from migration 0011.
+  if (process.env.E2E_ADMIN_PASSWORD) {
+    await tryLogin({
+      browser, baseURL, authDir, file: "admin.json",
+      setup: async (page) => {
+        await page.goto("/login");
+        await page.getByRole("tab", { name: "Admin" }).click();
+        await page.getByLabel("Email").fill(ADMIN_EMAIL);
+        await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+        await page.getByRole("button", { name: /Sign in/i }).click();
+        await page.waitForURL(/\/admin(\?|$)/, { timeout: 30_000 });
+      },
+    });
+  } else {
+    console.warn(
+      "[global-setup] E2E_ADMIN_PASSWORD not set — skipping admin login " +
+      "to avoid lockout. Admin specs will run unauthenticated and will " +
+      "see /login redirects. Set the env var to enable."
+    );
+    fs.writeFileSync(
+      path.join(authDir, "admin.json"),
+      JSON.stringify({ cookies: [], origins: [] }),
+    );
+  }
 
   // ── Worker (Bradley) ────────────────────────────────────────────
   await tryLogin({

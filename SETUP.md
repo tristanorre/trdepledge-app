@@ -165,10 +165,26 @@ Coverage:
 - admin page-render smoke (every authenticated admin page, no runtime errors)
 - worker page-render smoke (mobile viewport)
 
-The suite assumes seeded credentials (Thomas / `ChangeMe!2025`, workers / PIN `1234`).
-Override via `E2E_ADMIN_EMAIL`, `E2E_ADMIN_PASSWORD`, `E2E_WORKER_NAME`,
-`E2E_WORKER_PIN`. After credentials are rotated in production, set those
-env vars in CI to keep the suite working.
+**Worker tests** assume the seeded PIN `1234`. Override via `E2E_WORKER_NAME`
+and `E2E_WORKER_PIN` if you've rotated.
+
+**Admin tests** are **opt-in** via `E2E_ADMIN_PASSWORD`. They're skipped
+otherwise — the seed password rotates immediately on first deploy, and
+attempting it repeatedly would trip the 5-fail account lockout from
+migration 0011. To run the admin suite:
+
+```bash
+E2E_ADMIN_PASSWORD="<your current admin password>" npm run test:e2e
+```
+
+If you somehow lock yourself (or Thomas) out from password rotation
+attempts, clear the lockout via SQL:
+
+```sql
+update public.users
+set failed_login_attempts = 0, locked_until = null
+where role = 'admin';
+```
 
 ---
 

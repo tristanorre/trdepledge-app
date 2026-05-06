@@ -28,10 +28,17 @@ test.describe("Login screen", () => {
 // explicit checks so failures are pinpointed instead of cascading.
 test.describe("Successful sign-in", () => {
   test("admin lands on /admin", async ({ page }) => {
+    // Admin password rotates out of the seed default immediately on
+    // first deploy, and getting the wrong password 5× trips the
+    // lockout from migration 0011. So this test only runs when an
+    // explicit E2E_ADMIN_PASSWORD is provided.
+    test.skip(!process.env.E2E_ADMIN_PASSWORD,
+      "set E2E_ADMIN_PASSWORD to your current admin password to enable this test");
+
     await page.goto("/login");
     await page.getByRole("tab", { name: "Admin" }).click();
     await page.getByLabel("Email").fill(process.env.E2E_ADMIN_EMAIL    ?? "t.rdepledge@outlook.com");
-    await page.getByLabel("Password").fill(process.env.E2E_ADMIN_PASSWORD ?? "ChangeMe!2025");
+    await page.getByLabel("Password").fill(process.env.E2E_ADMIN_PASSWORD!);
     await page.getByRole("button", { name: /Sign in/i }).click();
     await page.waitForURL(/\/admin(\?|$)/, { timeout: 30_000 });
     await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening)/ })).toBeVisible();

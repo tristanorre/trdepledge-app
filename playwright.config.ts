@@ -42,16 +42,20 @@ export default defineConfig({
     },
     {
       name: "admin",
-      // Re-uses storage state created by global-setup.
+      // Re-uses storage state created by global-setup. Independent of
+      // the `anon` project: a single anon test failure shouldn't
+      // cascade-skip the entire admin suite (caught by the seeded admin
+      // password rotating immediately after first login).
       use: { ...devices["Desktop Chrome"], storageState: ".auth/admin.json" },
       testMatch: /admin-.*\.spec\.ts/,
-      dependencies: ["anon"], // ensures auth flow proves itself first
     },
     {
       name: "mobile-worker",
-      use: { ...devices["iPhone 13"], storageState: ".auth/worker.json" },
+      // Pixel 5 is Chromium-based with a mobile viewport — gives us the
+      // mobile constraints we want to test (touch targets, narrow width)
+      // without a separate WebKit binary download.
+      use: { ...devices["Pixel 5"], storageState: ".auth/worker.json" },
       testMatch: /worker-.*\.spec\.ts/,
-      dependencies: ["anon"],
     },
   ],
 

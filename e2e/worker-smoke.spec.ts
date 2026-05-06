@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // Worker pages, mobile viewport (configured at the project level in
-// playwright.config.ts via devices["iPhone 13"]).
+// playwright.config.ts via devices["Pixel 5"] — Chromium-based mobile).
 
 const PAGES = [
   "/worker",
@@ -24,7 +24,9 @@ for (const path of PAGES) {
 
 test("worker home shows the bottom nav with three tabs", async ({ page }) => {
   await page.goto("/worker");
-  await expect(page.getByRole("link", { name: /My Jobs/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Schedule/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /^Leave$/i })).toBeVisible();
+  // Exact match — without it, /Schedule/i also matches a job card whose
+  // status pill reads "SCHEDULED", breaking strict-mode.
+  await expect(page.getByRole("link", { name: "My Jobs", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Schedule", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Leave", exact: true })).toBeVisible();
 });
