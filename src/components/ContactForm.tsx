@@ -43,6 +43,11 @@ export default function ContactForm() {
       service_type: String(fd.get("service_type") ?? ""),
       client_type:  String(fd.get("client_type")  ?? ""),
       message:    String(fd.get("message") ?? "").trim(),
+      // Honeypot — kept blank by real browsers (it's invisible to users
+      // and labelled `tabIndex={-1}` so keyboard users skip it). Bots
+      // that auto-fill every input will populate it and get rejected
+      // server-side.
+      website:    String(fd.get("website") ?? ""),
     };
 
     try {
@@ -72,6 +77,27 @@ export default function ContactForm() {
 
   return (
     <form onSubmit={onSubmit} noValidate>
+      {/*
+        Honeypot. Visually hidden + aria-hidden + tabIndex=-1 so screen
+        readers and keyboard navigation skip it; bots that auto-fill every
+        text input will populate it and the server will silently drop the
+        submission. Note: do NOT use `display:none` — some smarter bots
+        skip those. Off-screen positioning fools a wider net.
+      */}
+      <div
+        aria-hidden="true"
+        style={{ position: "absolute", left: "-10000px", top: "auto", width: 1, height: 1, overflow: "hidden" }}
+      >
+        <label htmlFor="website">Website (leave blank)</label>
+        <input
+          type="text"
+          id="website"
+          name="website"
+          tabIndex={-1}
+          autoComplete="off"
+        />
+      </div>
+
       <div className="form-row">
         <div className="form-group">
           <label className="form-label" htmlFor="first_name">First Name *</label>

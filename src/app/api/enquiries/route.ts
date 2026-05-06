@@ -4,12 +4,27 @@ import { sendSms, normaliseAuPhone } from "@/lib/twilio";
 import { sendPush } from "@/lib/onesignal";
 import { sendEmail } from "@/lib/email";
 import { sms } from "@/lib/sms-templates";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 const REQUIRED_FIELDS = [
   "first_name", "last_name", "email", "suburb", "service_type",
 ] as const;
+
+// Per-field length caps. Generous enough that no real human gets cut off
+// (a long-form message is still 2000 chars), tight enough that a bot
+// can't dump a megabyte of SEO spam into our Postgres row.
+const MAX_LENGTH: Record<string, number> = {
+  first_name: 80,
+  last_name: 80,
+  email: 200,
+  phone: 32,
+  suburb: 120,
+  service_type: 80,
+  client_type: 80,
+  message: 2000,
+};
 
 type Payload = {
   first_name: string;
@@ -23,6 +38,18 @@ type Payload = {
 };
 
 export async function POST(req: Request) {
+  // ── Rate limit. Tied to client IP. 5 enquiries / 10 min is well above
+  // any plausible legitimate use (one person re-submitting after a typo),
+  // and well below what a bot script tries.
+  const ip = clientIp(req);
+  const limit = rateLimit(`enquiries:${ip}`, { max: 5, windowMs: 10 * 60 * 1000 });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many submissions, try again later." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(limit.resetMs / 1000)) } },
+    );
+  }
+
   let raw: unknown;
   try { raw = await req.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -32,15 +59,30 @@ export async function POST(req: Request) {
   }
   const body = raw as Record<string, unknown>;
 
+  // ── Honeypot. The form ships a hidden `website` field that a real
+  // browser never fills in but most form-spam bots blindly populate.
+  // Any non-empty value here = bot. We return 200 so the bot doesn't
+  // know it was caught and retry with a different shape.
+  const honeypot = typeof body.website === "string" ? body.website.trim() : "";
+  if (honeypot) {
+    console.warn("[enquiries] honeypot triggered, ignoring", { ip });
+    return NextResponse.json({ ok: true, persisted: false });
+  }
+
+  // Truncate (rather than reject) to be generous with humans pasting
+  // long content — still hard-caps row size for the DB.
+  const cap = (v: unknown, k: keyof typeof MAX_LENGTH) =>
+    String(v ?? "").trim().slice(0, MAX_LENGTH[k]);
+
   const data: Payload = {
-    first_name:   String(body.first_name ?? "").trim(),
-    last_name:    String(body.last_name  ?? "").trim(),
-    email:        String(body.email      ?? "").trim().toLowerCase(),
-    phone:        String(body.phone      ?? "").trim() || undefined,
-    suburb:       String(body.suburb     ?? "").trim(),
-    service_type: String(body.service_type ?? "").trim(),
-    client_type:  String(body.client_type  ?? "").trim() || undefined,
-    message:      String(body.message ?? "").trim() || undefined,
+    first_name:   cap(body.first_name, "first_name"),
+    last_name:    cap(body.last_name,  "last_name"),
+    email:        cap(body.email,      "email").toLowerCase(),
+    phone:        cap(body.phone,      "phone")        || undefined,
+    suburb:       cap(body.suburb,     "suburb"),
+    service_type: cap(body.service_type, "service_type"),
+    client_type:  cap(body.client_type,  "client_type") || undefined,
+    message:      cap(body.message,    "message")      || undefined,
   };
 
   for (const f of REQUIRED_FIELDS) {

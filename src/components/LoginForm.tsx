@@ -9,9 +9,24 @@ import { useSearchParams } from "next/navigation";
 type Worker = { id: string; name: string; colour: string };
 type Mode = "worker" | "admin";
 
+// Only accept same-origin relative paths as a `from` redirect target.
+// Without this, `/login?from=https://evil.example/phish` would land a
+// freshly-authed user on an attacker page after sign-in (open redirect).
+//   * Must start with `/` so it's a path, not a full URL
+//   * Must NOT start with `//` or `/\` (protocol-relative URLs that
+//     would still leave our origin)
+//   * Must not contain `\` (Windows path-style smuggle)
+function safeFrom(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  if (raw.includes("\\")) return null;
+  return raw;
+}
+
 export default function LoginForm() {
   const params = useSearchParams();
-  const fromParam = params.get("from") ?? null;
+  const fromParam = safeFrom(params.get("from"));
 
   const [mode, setMode] = useState<Mode>("worker");
   const [workers, setWorkers] = useState<Worker[]>([]);

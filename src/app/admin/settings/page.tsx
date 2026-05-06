@@ -62,6 +62,34 @@ const META: Record<IntegrationKey, {
 
 type SearchParams = { xero?: string };
 
+// Allowlisted Xero callback states. The `xero` querystring parameter
+// is set by the OAuth handler in /api/admin/xero/callback, but at least
+// one branch echoes the `error` param Xero sends us (which we don't
+// fully trust). Reflecting an arbitrary string into a banner — even
+// React-escaped — is enough to plant social-engineering text on a
+// trusted admin URL ("Xero connection failed: please call 1800-…").
+//   * "connected"            → success
+//   * "error:<known code>"   → known internal error codes only
+// Anything else collapses to a generic "Xero connection failed."
+const KNOWN_XERO_ERRORS: Record<string, string> = {
+  state_mismatch: "Security check failed (CSRF state mismatch). Please try again.",
+  store_failed:   "Couldn't save the Xero tokens. Try reconnecting.",
+  token_exchange_failed: "Xero rejected the authorisation code. Please try again.",
+};
+
+function xeroBanner(raw: string | undefined): { kind: "success" | "error"; text: string } | null {
+  if (!raw) return null;
+  if (raw === "connected") {
+    return { kind: "success", text: "✓ Xero connected. Invoice send actions on completed jobs will now use your account." };
+  }
+  if (raw.startsWith("error:")) {
+    const code = raw.slice("error:".length);
+    const text = KNOWN_XERO_ERRORS[code] ?? "Xero connection failed. Please try again.";
+    return { kind: "error", text: `⚠ ${text}` };
+  }
+  return null;
+}
+
 export default async function AdminSettingsPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireAdmin();
   const supabase = getServiceClient();
@@ -90,12 +118,10 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
         Status of each third-party integration. Items are graceful: anything not configured here just becomes a no-op in production — the app still works.
       </p>
 
-      {searchParams.xero === "connected" && (
-        <Banner kind="success">✓ Xero connected. Invoice send actions on completed jobs will now use your account.</Banner>
-      )}
-      {searchParams.xero?.startsWith("error:") && (
-        <Banner kind="error">⚠ Xero connection failed: {searchParams.xero.slice("error:".length)}</Banner>
-      )}
+      {(() => {
+        const banner = xeroBanner(searchParams.xero);
+        return banner ? <Banner kind={banner.kind}>{banner.text}</Banner> : null;
+      })()}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {statuses.map((s) => {
