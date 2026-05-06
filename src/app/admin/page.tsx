@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
+import { todayISO } from "@/lib/dates";
 
 function greeting(d = new Date()) {
   const h = d.getHours();
@@ -8,7 +9,6 @@ function greeting(d = new Date()) {
   if (h < 17) return "Good afternoon";
   return "Good evening";
 }
-function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 export const dynamic = "force-dynamic";
 

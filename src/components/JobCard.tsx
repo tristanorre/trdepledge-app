@@ -54,7 +54,7 @@ export default function JobCard({ job, href, showWorkerCount }: Props) {
       <div style={{ fontSize: 13, color: "var(--gray)", lineHeight: 1.5 }}>
         {job.suburb && <div>{job.suburb}</div>}
         {job.description && (
-          <div style={{ marginTop: 4, color: "#444", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+          <div style={{ marginTop: 4, color: "#444", display: "-webkit-box", WebkitLineClamp: 2, lineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
             {job.description}
           </div>
         )}

@@ -60,8 +60,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // the simple inclusive day count is what the spec implies and
   // matches how small businesses usually run leave.
   if (status === "approved") {
-    const days = daysBetweenInclusive(request.from_date, request.to_date);
-    const year = new Date(request.from_date).getFullYear();
+    const days = workdaysBetweenInclusive(request.from_date, request.to_date);
+    // Parse the YYYY-MM-DD as local — `new Date("2026-01-01")` is UTC
+    // midnight which can resolve to the previous calendar day in
+    // Adelaide, putting the leave under the wrong year.
+    const year = Number(request.from_date.slice(0, 4));
     const balanceCol =
       request.type === "Annual Leave"   ? "annual_used"
     : request.type === "Sick Leave"     ? "sick_used"
@@ -108,9 +111,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json({ ok: true });
 }
 
-function daysBetweenInclusive(from: string, to: string): number {
-  const a = new Date(from + "T00:00:00").getTime();
-  const b = new Date(to + "T00:00:00").getTime();
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return 1;
-  return Math.max(1, Math.round((b - a) / 86_400_000) + 1);
+// Counts business days only (skip Saturday + Sunday). Public holidays
+// would need a holidays table or external API and are deferred — this
+// covers the common case and aligns with AU Fair Work expectations
+// for accruing/burning paid annual leave at 4 weeks (20 working days)
+// per year.
+function workdaysBetweenInclusive(from: string, to: string): number {
+  const start = new Date(from + "T00:00:00");
+  const end   = new Date(to   + "T00:00:00");
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) return 1;
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor.getTime() <= end.getTime()) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return Math.max(1, count);
 }

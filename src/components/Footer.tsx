@@ -19,7 +19,9 @@ export default function Footer() {
               Proudly local, supporting locals, employing locals. Serving Wallaroo, Kadina, Moonta and the Copper Coast since 2020.
             </p>
             <div className="footer-social">
-              <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="social-btn" title="Facebook">𝐟</a>
+              {/* Facebook icon removed — there is no public TRD page yet, and a
+                  link to facebook.com root is worse than no link (looks like
+                  a stub, hurts trust). Restore once a real Page URL exists. */}
               <a href="mailto:t.rdepledge@outlook.com" className="social-btn" title="Email">✉</a>
               <a href="tel:0474844204" className="social-btn" title="Call">📞</a>
             </div>

@@ -97,7 +97,7 @@ export default async function AdminEnquiriesPage({
               {e.message && (
                 <div style={{
                   fontSize: 13, color: "#444", lineHeight: 1.5,
-                  display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                  display: "-webkit-box", WebkitLineClamp: 2, lineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
                   marginBottom: 6,
                 }}>
                   {e.message}

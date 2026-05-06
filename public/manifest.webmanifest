@@ -2,7 +2,7 @@
   "name": "T.R. Depledge Field App",
   "short_name": "TR Depledge",
   "description": "Field service management for T.R. Depledge Gardening & Maintenance — staff jobs, schedule, leave, time tracking.",
-  "start_url": "/",
+  "start_url": "/login",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

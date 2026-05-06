@@ -5,7 +5,7 @@ import Reveal from "@/components/Reveal";
 export const metadata: Metadata = {
   title: "About Us",
   description:
-    "Founded in Wallaroo on 30 November 2020 by Thomas Depledge. Now a 6-person team servicing 30+ regular clients and 80+ homes at Moonta Bay Lifestyle Estate.",
+    "Founded in Wallaroo on 30 November 2020 by Thomas Depledge. A five-person local team servicing 30+ regular clients and 80+ homes at Moonta Bay Lifestyle Estate.",
 };
 
 const TEAM = [
@@ -54,7 +54,7 @@ export default function AboutPage() {
                 </div>
                 <div className="milestone" style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}>
                   <div className="milestone-year">2025</div>
-                  <div className="milestone-label">6 team members</div>
+                  <div className="milestone-label">5 team members</div>
                 </div>
               </div>
             </Reveal>
@@ -72,7 +72,7 @@ export default function AboutPage() {
               <div className="quote-author">— Thomas Depledge, Owner & CEO</div>
             </Reveal>
 
-            <Reveal as="p">In 2024, Thomas fully stepped away from childcare and university to focus completely on the business. Now in 2025, with six team members on board, the business maintains the Moonta Bay Lifestyle Estate — around 80 homes with another 120 to come — while supporting over 30 regular clients.</Reveal>
+            <Reveal as="p">In 2024, Thomas fully stepped away from childcare and university to focus completely on the business. Now in 2025, with five team members on board, the business maintains the Moonta Bay Lifestyle Estate — around 80 homes with another 120 to come — while supporting over 30 regular clients.</Reveal>
 
             <Reveal className="quote-block" style={{ background: "var(--lime)" }}>
               <p className="quote-text" style={{ color: "var(--navy)" }}>

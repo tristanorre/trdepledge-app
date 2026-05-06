@@ -109,7 +109,11 @@ export default function JobPhotosSection({
             <input
               ref={inputRef}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              // iOS Safari camera roll defaults to HEIC. Including
+              // image/heic and image/heif lets the user pick those
+              // photos; browser-image-compression decodes them and
+              // emits JPEG (`fileType: "image/jpeg"` in COMPRESSION_OPTS).
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
               capture="environment"
               multiple
               onChange={(e) => uploadFiles(e.target.files)}

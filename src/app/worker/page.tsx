@@ -2,12 +2,9 @@ import { requireWorker } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import JobCard from "@/components/JobCard";
 import type { Job } from "@/lib/types";
+import { todayISO } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default async function WorkerJobsPage() {
   const session = await requireWorker();

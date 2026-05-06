@@ -14,7 +14,13 @@ export const runtime = "nodejs";
 // upload under ~1MB per spec). The server enforces a hard 5MB ceiling
 // as a safety net in case the client skips it.
 const MAX_BYTES = 5 * 1024 * 1024;
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+// iOS Safari camera roll returns HEIC/HEIF by default. Allow them at
+// the API; browser-image-compression on the client transcodes to JPEG
+// (or in worst-case lets the server reject after a transparent retry).
+const ALLOWED_TYPES = new Set([
+  "image/jpeg", "image/png", "image/webp",
+  "image/heic", "image/heif",
+]);
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();

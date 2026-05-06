@@ -52,13 +52,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Worker app pages: stale-while-revalidate. Lets workers open the app
-  // offline and at least see what they had loaded last time, while
-  // fresh data lands in the background.
-  if (url.pathname.startsWith("/worker") || url.pathname.startsWith("/admin")) {
-    event.respondWith(staleWhileRevalidate(req, PAGE_CACHE));
-    return;
-  }
+  // We deliberately do NOT cache `/admin/*` or `/worker/*` HTML.
+  //   1. Cross-user leak risk on shared devices (worker A's cached
+  //      page would flash on screen for worker B between sign-out
+  //      and revalidate).
+  //   2. Cached redirects pin auth state — a 302 to /login from an
+  //      expired session would persist in cache.
+  // If real offline support is needed later, build an explicit
+  // IndexedDB-backed job summary, not stale HTML.
 
   // Public marketing pages + static assets: cache-first.
   if (req.destination === "image" || req.destination === "font" || req.destination === "style") {

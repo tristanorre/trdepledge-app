@@ -2,9 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const PHOTOS_BUCKET = "job-photos";
 
-// Signed URLs valid for an hour — long enough for an open page but not
-// for a screenshot to be sharable indefinitely.
-const SIGNED_URL_TTL_SECONDS = 60 * 60;
+// Signed URLs valid for 8 hours — covers a full workday so a job
+// detail page left open from 8am morning briefing is still showing
+// photos at 4pm. Trade-off: a screenshot of the URL is shareable for
+// the same window. For an internal field tool this is acceptable.
+const SIGNED_URL_TTL_SECONDS = 60 * 60 * 8;
 
 export async function signPhotoUrls(
   supabase: SupabaseClient | null,

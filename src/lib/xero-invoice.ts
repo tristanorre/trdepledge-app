@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getValidTokens } from "@/lib/xero";
 import { fmtMoney, type CostBreakdown } from "@/lib/cost";
 import type { Job, ClientType } from "@/lib/types";
+import { todayISO, addDaysISO } from "@/lib/dates";
 
 // Xero invoice send. Builds the payload from the cost breakdown +
 // upserts the contact (find-by-name OR create-new) before POSTing.
@@ -63,8 +64,10 @@ export async function sendInvoiceForJob(
     return { ok: false, error: "nothing_to_invoice" };
   }
 
-  const invoiceDate = job.date ?? new Date().toISOString().slice(0, 10);
-  const dueDate = addDays(invoiceDate, 14);
+  // Use local-time date helpers — `toISOString().slice(0,10)` would
+  // be UTC and tag a Friday-evening Adelaide invoice as Saturday.
+  const invoiceDate = job.date ?? todayISO();
+  const dueDate = addDaysISO(invoiceDate, 14);
 
   const reference = ndisReference(job);
 
@@ -227,11 +230,8 @@ function ndisReference(job: Job): string {
 function round2(n: number): number { return Math.round(n * 100) / 100; }
 function round3(n: number): number { return Math.round(n * 1000) / 1000; }
 
-function addDays(iso: string, n: number): string {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-}
+// addDays now lives in lib/dates.ts as `addDaysISO` — kept as a thin
+// re-export here so any existing call sites keep compiling.
 
 // Surfaced for the "preview" before send (admin sees what will go to Xero).
 export function previewLines(job: Job, cost: CostBreakdown): Array<{
