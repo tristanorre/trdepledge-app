@@ -650,7 +650,14 @@ footer {
 .footer-bottom-links a:hover { color: var(--lime); }
 
 /* ── GALLERY ──────────────────────────────────── */
-.gallery-hero { background: var(--navy); padding: 80px 0; text-align: center; }
+/* v16 cue: gallery hero now yellow to match the homepage's voice.
+   Navy text overrides for the headline + lead since `.section-title.light`
+   would render white on yellow (unreadable). */
+.gallery-hero { background: var(--yellow); padding: 80px 0; text-align: center; }
+.gallery-hero .section-title.light,
+.gallery-hero .section-lead.light { color: var(--navy); }
+.gallery-hero .eyebrow { color: var(--navy); }
+.gallery-hero .eyebrow::before { background: var(--navy); }
 .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0; }
 .gallery-item {
   aspect-ratio: 1;
@@ -682,7 +689,12 @@ footer {
 .gallery-item:hover .gallery-overlay { opacity: 1; }
 
 /* ── CONTACT ──────────────────────────────────── */
-.contact-hero { background: var(--navy); padding: 80px 0; text-align: center; }
+/* v16 cue: contact hero yellow + navy text overrides. */
+.contact-hero { background: var(--yellow); padding: 80px 0; text-align: center; }
+.contact-hero .section-title.light,
+.contact-hero .section-lead.light { color: var(--navy); }
+.contact-hero .eyebrow { color: var(--navy); }
+.contact-hero .eyebrow::before { background: var(--navy); }
 .contact-body { padding: 80px 0; }
 .contact-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
 .contact-form-wrap {

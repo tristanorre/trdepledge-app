@@ -10,6 +10,16 @@
  * adjustments noted inline where I diverged from the mock.
  */
 
+/* Marketing layout fixes for the v16 nav.
+ * The legacy `main { padding-top: var(--nav-h) }` rule in globals.css
+ * existed because the previous nav was `position: fixed` and content
+ * needed clearance below it. The v16 nav is `position: sticky`, which
+ * already participates in document flow — the 72px padding-top now
+ * shows up as a band of body off-white between the nav and the
+ * yellow hero. Override to 0 for the marketing pages only (v16.css
+ * is scoped to the marketing route group). */
+main { padding-top: 0; }
+
 /* ── NAV ─────────────────────────────────────────────────────────── */
 
 .v16-nav {

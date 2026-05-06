@@ -74,13 +74,15 @@ const SERVICES: Service[] = [
 export default function ServicesPage() {
   return (
     <>
-      <section style={{ background: "var(--navy)", padding: "80px 0", textAlign: "center" }}>
+      {/* v16 yellow hero — drops the `light` class on the title/lead so
+          they render in navy instead of white-on-yellow. */}
+      <section style={{ background: "var(--yellow)", padding: "80px 0", textAlign: "center" }}>
         <div className="container">
-          <div className="eyebrow" style={{ justifyContent: "center" }}>Our Services</div>
-          <h1 className="section-title light" style={{ marginBottom: 16 }}>
+          <div className="eyebrow dark" style={{ justifyContent: "center" }}>Our Services</div>
+          <h1 className="section-title" style={{ marginBottom: 16 }}>
             Everything Your Garden<br />and Yard <em>Needs</em>
           </h1>
-          <p className="section-lead light" style={{ margin: "0 auto" }}>
+          <p className="section-lead" style={{ margin: "0 auto" }}>
             Professional gardening and maintenance across the Copper Coast and Yorke Peninsula. Honest pricing, quality results.
           </p>
         </div>

@@ -19,10 +19,13 @@ const TEAM = [
 export default function AboutPage() {
   return (
     <>
-      <section style={{ background: "var(--navy)", padding: "80px 0", textAlign: "center" }}>
+      {/* v16 yellow hero — matches the homepage's voice. Title + eyebrow
+          drop the `light` modifier (was for navy bg) so they render in
+          navy on yellow. */}
+      <section style={{ background: "var(--yellow)", padding: "80px 0", textAlign: "center" }}>
         <div className="container">
-          <div className="eyebrow" style={{ justifyContent: "center" }}>Our Story</div>
-          <h1 className="section-title light" style={{ marginBottom: 16 }}>
+          <div className="eyebrow dark" style={{ justifyContent: "center" }}>Our Story</div>
+          <h1 className="section-title" style={{ marginBottom: 16 }}>
             Built From the Ground Up<br />in <em>Wallaroo</em>
           </h1>
         </div>

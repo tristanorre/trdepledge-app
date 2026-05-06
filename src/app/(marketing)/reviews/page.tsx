@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 // short list, swap this for a card grid with photo + quote + suburb.
 export default function ReviewsPage() {
   return (
-    <section style={{ padding: "80px 0", background: "var(--off)", minHeight: 480 }}>
+    <section style={{ padding: "80px 0", background: "var(--yellow)", minHeight: 480 }}>
       <div className="container" style={{ maxWidth: 720, textAlign: "center" }}>
         <div className="eyebrow dark" style={{ justifyContent: "center" }}>What Our Clients Say</div>
         <h1
