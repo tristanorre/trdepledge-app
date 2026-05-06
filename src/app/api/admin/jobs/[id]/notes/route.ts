@@ -23,37 +23,37 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!text) return NextResponse.json({ error: "text is required" }, { status: 400 });
   if (text.length > 4000) return NextResponse.json({ error: "text too long" }, { status: 400 });
 
-  // Read-modify-write — fine at our scale (1 admin, ~handful of workers
-  // editing the same job is rare). If contention shows up later, a
-  // server-side jsonb_array_append RPC removes the round trip.
-  const { data: existing, error: readErr } = await supabase
-    .from("jobs")
-    .select("notes")
-    .eq("id", params.id)
-    .maybeSingle();
-
-  if (readErr || !existing) {
-    return NextResponse.json({ error: "Job not found" }, { status: 404 });
-  }
-
   const note: JobNote = {
     author_id: session.user.id,
     author_name: session.user.name,
     text,
     timestamp: new Date().toISOString(),
   };
-  const next = Array.isArray(existing.notes) ? [...existing.notes, note] : [note];
 
-  const { data, error } = await supabase
+  // Atomic append via RPC — see migration 0014 for why. Closes a
+  // read-modify-write race + applies a 200-note cap server-side.
+  const { data: ok, error: rpcErr } = await supabase.rpc("append_job_note", {
+    p_job_id: params.id,
+    p_note: note,
+    p_worker_id: null, // admin path, no scope filter
+  });
+
+  if (rpcErr || !ok) {
+    console.error("[admin/jobs/:id/notes POST]", rpcErr ?? "row not updated");
+    return NextResponse.json(
+      { error: rpcErr ? "Could not append note" : "Job not found or note cap reached" },
+      { status: rpcErr ? 500 : 409 },
+    );
+  }
+
+  // Re-read so the response carries the canonical notes array (the
+  // alternative is to assume our append is the latest, but a concurrent
+  // worker note could have landed in between).
+  const { data: fresh } = await supabase
     .from("jobs")
-    .update({ notes: next })
-    .eq("id", params.id)
     .select("notes")
+    .eq("id", params.id)
     .single();
 
-  if (error) {
-    console.error("[admin/jobs/:id/notes POST]", error);
-    return NextResponse.json({ error: "Could not append note" }, { status: 500 });
-  }
-  return NextResponse.json({ notes: data.notes }, { status: 201 });
+  return NextResponse.json({ notes: fresh?.notes ?? [] }, { status: 201 });
 }

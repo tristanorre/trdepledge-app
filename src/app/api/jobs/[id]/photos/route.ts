@@ -48,12 +48,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Unsupported file type" }, { status: 415 });
   }
 
-  // Authorisation: read job with role-appropriate filter.
+  // Pre-check the job exists with role-appropriate scoping. We could
+  // skip this and rely on the RPC's auth filter alone, but a probing
+  // 404 before we burn an upload is cheaper than uploading and then
+  // having to clean up an orphan blob.
   const baseQuery = supabase
     .from("jobs")
-    .select("id, photos_before, photos_after, assigned_worker_ids")
+    .select("id")
     .eq("id", params.id);
-  const { data: job, error: readErr } = session.user.role === "admin"
+  const { data: jobExists, error: readErr } = session.user.role === "admin"
     ? await baseQuery.maybeSingle()
     : await baseQuery.contains("assigned_worker_ids", [session.user.id]).maybeSingle();
 
@@ -61,7 +64,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     console.error("[photos POST] read", readErr);
     return NextResponse.json({ error: "Could not load job" }, { status: 500 });
   }
-  if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!jobExists) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   // Build a non-guessable path. crypto.randomUUID is available in Node 19+.
   const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
@@ -78,25 +81,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 
-  const column = kind === "before" ? "photos_before" : "photos_after";
-  const next = [...((job as any)[column] ?? []), path];
-  // Re-apply the worker scoping on the UPDATE too. Without this, an
-  // admin who un-assigns the worker between the read above and this
-  // write could let the worker still mutate the row.
-  let updateQuery = supabase
-    .from("jobs")
-    .update({ [column]: next })
-    .eq("id", params.id);
-  if (session.user.role === "worker") {
-    updateQuery = updateQuery.contains("assigned_worker_ids", [session.user.id]);
-  }
-  const { error: updateErr } = await updateQuery;
+  // Atomic append via Postgres function — closes the read-modify-write
+  // race two simultaneous uploads would otherwise hit. The function
+  // re-checks worker assignment, so even if assignment was revoked
+  // between the read above and this call, the row update matches 0
+  // and we treat it as a 404 (and clean up the upload).
+  const { data: ok, error: rpcErr } = await supabase.rpc("append_job_photo", {
+    p_job_id: params.id,
+    p_kind: kind,
+    p_path: path,
+    p_worker_id: session.user.role === "admin" ? null : session.user.id,
+  });
 
-  if (updateErr) {
-    console.error("[photos POST] update job", updateErr);
-    // Try to clean up the orphan upload — best effort, no error if it fails.
+  if (rpcErr || !ok) {
+    console.error("[photos POST] append rpc", rpcErr ?? "row not updated");
+    // Roll back the orphan upload — best effort, no error if it fails.
     await supabase.storage.from(PHOTOS_BUCKET).remove([path]).catch(() => {});
-    return NextResponse.json({ error: "Could not save photo reference" }, { status: 500 });
+    return NextResponse.json(
+      { error: rpcErr ? "Could not save photo reference" : "Job not found or photo cap reached" },
+      { status: rpcErr ? 500 : 409 },
+    );
   }
 
   return NextResponse.json({ path }, { status: 201 });

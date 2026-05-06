@@ -70,29 +70,23 @@ export async function POST(req: Request) {
     : (payment.buyer_email_address ?? "Square customer");
   const phone = (shipping?.phone ?? null) as string | null;
 
-  // Idempotency — Square retries with the same id. We use it as the
-  // job's `description` payload prefix so re-processing the same event
-  // doesn't create a duplicate.
-  const dedupeKey = `square:${payment.id}`;
-  const { data: existing } = await supabase
-    .from("jobs")
-    .select("id")
-    .ilike("description", `%${dedupeKey}%`)
-    .maybeSingle();
-
-  if (existing) {
-    return NextResponse.json({ ok: true, deduped: true, job_id: existing.id });
-  }
+  // Idempotency — Square retries with the same payment id. We use a
+  // dedicated indexed column + ON CONFLICT DO NOTHING so dedup is
+  // O(unique-index lookup) and can't be tripped by a job description
+  // happening to contain the dedup string. Migration 0016 adds the
+  // unique partial index on (external_ref) where external_ref is not
+  // null. .upsert with ignoreDuplicates does an INSERT ... ON CONFLICT
+  // DO NOTHING under the hood.
+  const externalRef = `square:${payment.id}`;
 
   const description = [
     note,
     `Total: ${(Number(payment.amount_money?.amount ?? 0) / 100).toFixed(2)} ${payment.amount_money?.currency ?? "AUD"}`,
-    dedupeKey,
   ].join(" · ");
 
-  const { data: job, error } = await supabase
+  const { data: inserted, error } = await supabase
     .from("jobs")
-    .insert({
+    .upsert({
       client_name: buyerName,
       client_type: "Private",
       suburb: shipping?.locality ?? null,
@@ -101,13 +95,30 @@ export async function POST(req: Request) {
       description,
       status: "pending_review",
       assigned_worker_ids: [],
-    })
-    .select("id, client_name")
-    .single();
+      external_ref: externalRef,
+    }, { onConflict: "external_ref", ignoreDuplicates: true })
+    .select("id, client_name");
 
-  if (error || !job) {
+  if (error) {
     console.error("[square webhook] insert failed", error);
     return NextResponse.json({ error: "Could not create job" }, { status: 500 });
+  }
+
+  // upsert + ignoreDuplicates returns an empty array on conflict.
+  // Look up the existing row so the response carries its id.
+  let job = inserted?.[0];
+  if (!job) {
+    const { data: existing } = await supabase
+      .from("jobs")
+      .select("id, client_name")
+      .eq("external_ref", externalRef)
+      .maybeSingle();
+    if (existing) {
+      return NextResponse.json({ ok: true, deduped: true, job_id: existing.id });
+    }
+    // Truly nothing — likely a race with a parallel webhook delivery
+    // that won AND completed; treat as successful idempotent retry.
+    return NextResponse.json({ ok: true, deduped: true });
   }
 
   void (async () => {

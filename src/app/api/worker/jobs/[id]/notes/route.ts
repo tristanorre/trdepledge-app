@@ -23,36 +23,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!text) return NextResponse.json({ error: "text is required" }, { status: 400 });
   if (text.length > 4000) return NextResponse.json({ error: "text too long" }, { status: 400 });
 
-  const { data: existing, error: readErr } = await supabase
-    .from("jobs")
-    .select("notes")
-    .eq("id", params.id)
-    .contains("assigned_worker_ids", [session.user.id])
-    .maybeSingle();
-
-  if (readErr || !existing) {
-    return NextResponse.json({ error: "Job not found" }, { status: 404 });
-  }
-
   const note: JobNote = {
     author_id: session.user.id,
     author_name: session.user.name,
     text,
     timestamp: new Date().toISOString(),
   };
-  const next = Array.isArray(existing.notes) ? [...existing.notes, note] : [note];
 
-  const { data, error } = await supabase
+  // Atomic append via RPC. The worker_id filter is enforced inside the
+  // function — if the worker has been removed from the job since they
+  // opened the page, the row update matches 0 and we return 404.
+  const { data: ok, error: rpcErr } = await supabase.rpc("append_job_note", {
+    p_job_id: params.id,
+    p_note: note,
+    p_worker_id: session.user.id,
+  });
+
+  if (rpcErr || !ok) {
+    console.error("[worker/jobs/:id/notes POST]", rpcErr ?? "row not updated");
+    return NextResponse.json(
+      { error: rpcErr ? "Could not append note" : "Job not found or note cap reached" },
+      { status: rpcErr ? 500 : 404 },
+    );
+  }
+
+  const { data: fresh } = await supabase
     .from("jobs")
-    .update({ notes: next })
-    .eq("id", params.id)
-    .contains("assigned_worker_ids", [session.user.id])
     .select("notes")
+    .eq("id", params.id)
     .single();
 
-  if (error) {
-    console.error("[worker/jobs/:id/notes POST]", error);
-    return NextResponse.json({ error: "Could not append note" }, { status: 500 });
-  }
-  return NextResponse.json({ notes: data.notes }, { status: 201 });
+  return NextResponse.json({ notes: fresh?.notes ?? [] }, { status: 201 });
 }

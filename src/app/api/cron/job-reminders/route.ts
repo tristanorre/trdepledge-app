@@ -26,7 +26,28 @@ export async function GET(req: Request) {
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
-  const tomorrow = addDaysISO(todayISO(), 1);
+  // Idempotency. Without this, a Vercel cron retry (rare but possible
+  // after a transient 5xx) would fan out duplicate SMS + push to every
+  // worker and client with a job tomorrow. Insert into cron_runs with
+  // (job_name, run_date) as the PK; if the row already exists we bail
+  // with the previous result. See migration 0016.
+  const today = todayISO();
+  const cronJobName = "job-reminders";
+  const { error: claimErr } = await supabase
+    .from("cron_runs")
+    .insert({ job_name: cronJobName, run_date: today });
+  if (claimErr) {
+    // Unique-violation = already ran today, that's the success path.
+    // PostgREST surfaces it as code 23505.
+    if ((claimErr as { code?: string }).code === "23505") {
+      return NextResponse.json({ ok: true, deduped: true, date: today });
+    }
+    console.error("[cron job-reminders] claim failed", claimErr);
+    // Fall through and continue — better to risk a duplicate than to
+    // skip an entire day's reminders silently.
+  }
+
+  const tomorrow = addDaysISO(today, 1);
 
   const { data: jobsData, error } = await supabase
     .from("jobs")
@@ -71,6 +92,15 @@ export async function GET(req: Request) {
       smsSent++;
     }
   }
+
+  // Persist a summary on the cron_runs row for easy after-the-fact
+  // inspection ("did Tuesday's run actually send anything?"). Best
+  // effort — failure here doesn't undo the work above.
+  await supabase
+    .from("cron_runs")
+    .update({ detail: { jobs: jobs.length, pushes_dispatched: pushSent, sms_dispatched: smsSent } })
+    .eq("job_name", cronJobName)
+    .eq("run_date", today);
 
   return NextResponse.json({
     ok: true,

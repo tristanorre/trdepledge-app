@@ -72,30 +72,24 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     : null; // Unpaid leave doesn't draw down a counter
 
     if (balanceCol) {
-      // Read-modify-write — race-free enough for a single admin
-      // approving sequentially. If concurrency becomes a concern,
-      // we'd push this into a server-side RPC.
-      const { data: bal } = await supabase
-        .from("leave_balances")
-        .select(`id, ${balanceCol}`)
-        .eq("worker_id", request.worker_id)
-        .eq("year", year)
-        .maybeSingle();
-
-      if (bal) {
-        const current = Number((bal as Record<string, unknown>)[balanceCol] ?? 0);
-        await supabase
-          .from("leave_balances")
-          .update({ [balanceCol]: current + days })
-          .eq("id", (bal as { id: string }).id);
-      } else {
-        // No balance row yet — create one with sensible defaults from
-        // the spec, pre-applying the just-approved days.
-        await supabase.from("leave_balances").insert({
-          worker_id: request.worker_id,
-          year,
-          [balanceCol]: days,
-        });
+      // Atomic upsert via RPC — see migration 0015. The previous
+      // read-modify-write would lose concurrent approvals (admin A
+      // approves request 1, admin B approves request 2; both read the
+      // same `current`, both write `current + days`, the second
+      // approval's days are silently dropped). Single admin today, but
+      // the cost of the fix is one SQL function and zero extra
+      // round-trips, so worth doing now.
+      const { error: rpcErr } = await supabase.rpc("increment_leave_balance", {
+        p_worker_id: request.worker_id,
+        p_year: year,
+        p_column: balanceCol,
+        p_days: days,
+      });
+      if (rpcErr) {
+        console.error("[admin/leave PATCH] increment_leave_balance", rpcErr);
+        // Don't fail the whole request — the leave is approved on the
+        // requests row, the balance counter is just out of sync. Log
+        // loud and move on.
       }
     }
   }
