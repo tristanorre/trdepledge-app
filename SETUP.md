@@ -258,6 +258,18 @@ Order doesn't matter — each is independent.
 `vercel.json` schedules `/api/cron/job-reminders` daily at 08:30 UTC, which
 is **6 PM ACST** (winter) / **7 PM ACDT** (summer).
 
+**Hourly cron disabled on Hobby plan**: `/api/cron/shift-reminder` (the
+"shift starting in 1 hour" worker push) needs an hourly schedule, which
+Vercel Hobby doesn't allow. The endpoint code is shipped and will work
+on Vercel Pro — just add this to the `crons` array in `vercel.json`:
+
+```json
+{ "path": "/api/cron/shift-reminder", "schedule": "0 * * * *" }
+```
+
+Until then, workers still get the daily 6pm push for tomorrow's jobs.
+Manual trigger for testing: `curl -H "Authorization: Bearer $CRON_SECRET" https://app.../api/cron/shift-reminder`
+
 The endpoint requires `Authorization: Bearer $CRON_SECRET`. Vercel sends this
 automatically when `CRON_SECRET` is in your env.
 

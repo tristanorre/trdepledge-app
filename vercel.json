@@ -4,10 +4,6 @@
     {
       "path": "/api/cron/job-reminders",
       "schedule": "30 8 * * *"
-    },
-    {
-      "path": "/api/cron/shift-reminder",
-      "schedule": "0 * * * *"
     }
   ]
 }
