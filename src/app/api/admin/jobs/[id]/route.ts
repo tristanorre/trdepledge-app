@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { sendPush } from "@/lib/onesignal";
 import type { ClientType, JobStatus } from "@/lib/types";
@@ -133,6 +134,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
     }, supabase);
   }
 
+  // Bust the App Router cache so the next visit to the detail page or
+  // jobs list shows the updated data instead of the cached RSC payload.
+  revalidatePath(`/admin/jobs/${params.id}`);
+  revalidatePath("/admin/jobs");
+
   return NextResponse.json({ job: data });
 }
 
@@ -152,5 +158,6 @@ export async function DELETE(_req: Request, { params }: Ctx) {
     console.error("[admin/jobs/:id DELETE]", error);
     return NextResponse.json({ error: "Could not delete job" }, { status: 500 });
   }
+  revalidatePath("/admin/jobs");
   return NextResponse.json({ ok: true });
 }

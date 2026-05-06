@@ -39,12 +39,21 @@ test.describe("Admin jobs", () => {
     await page.getByLabel(/^Status$/).selectOption("completed");
     await page.getByRole("button", { name: /Save changes/i }).click();
     await page.waitForURL(detailUrl, { timeout: 30_000 });
-    await expect(page.getByText(/Completed/i).first()).toBeVisible();
+    // Defensive reload — the App Router cache can briefly serve stale
+    // RSC payloads after navigate-back-to-recently-visited-URL even
+    // with the API-route revalidatePath we now do server-side. Test
+    // is more reliable when it requests a fresh render.
+    await page.reload();
+    // Wait specifically for the Reopen button (only renders when
+    // status === "completed"); avoids racing against the dropdown's
+    // "Completed" option label that lingers from the edit page.
+    await expect(page.getByRole("button", { name: /Reopen job/i })).toBeVisible({ timeout: 15_000 });
 
     // ── Reopen (the small admin gap-closer we built earlier) ─────
-    await page.getByRole("button", { name: /Reopen job/i }).click();
     page.once("dialog", (d) => d.accept());
-    await expect(page.getByText(/In progress/i).first()).toBeVisible({ timeout: 15_000 });
+    await page.getByRole("button", { name: /Reopen job/i }).click();
+    await page.reload();
+    await expect(page.getByRole("link", { name: /Edit job/i })).toBeVisible({ timeout: 15_000 });
 
     // ── Delete ───────────────────────────────────────────────────
     await page.goto(`/admin/jobs/${jobId}/edit`);

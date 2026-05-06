@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 
 export const runtime = "nodejs";
@@ -49,5 +50,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     console.error("[admin/jobs reopen]", error);
     return NextResponse.json({ error: "Could not reopen" }, { status: 500 });
   }
+  revalidatePath(`/admin/jobs/${params.id}`);
+  revalidatePath("/admin/jobs");
   return NextResponse.json({ ok: true, job: data });
 }
