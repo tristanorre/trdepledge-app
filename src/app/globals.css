@@ -211,7 +211,20 @@ main { padding-top: var(--nav-h); }
   margin-bottom: 16px;
 }
 .section-title.light { color: white; }
-.section-title em { color: var(--lime); font-style: italic; }
+/* v16 cue: the highlighted word in any section heading inherits the
+   Caveat handwriting font, keeping the homepage's "Maintenance"
+   flourish consistent across interior pages. Slight upward nudge so
+   the script-style baseline aligns with the surrounding serif/sans. */
+.section-title em {
+  color: var(--lime);
+  font-style: normal;
+  font-family: var(--font-script);
+  font-weight: 700;
+  letter-spacing: -1px;
+  display: inline-block;
+  transform: rotate(-2deg) translateY(-4px);
+}
+.section-title.light em { color: var(--lime); }
 
 .section-lead {
   font-size: 17px; line-height: 1.75;
