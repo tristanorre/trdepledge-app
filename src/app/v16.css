@@ -117,7 +117,11 @@ main { padding-top: 0; }
   color: var(--yellow);
   flex-shrink: 0;
 }
-.v16-phone-text { line-height: 1.05; }
+/* Stack the number on top of the "CALL THOMAS TODAY" tagline. The
+   spans are inline by default, so they were rendering side-by-side
+   ("0474 844 204CALL THOMAS TODAY"). Flex column gets the proper
+   two-line layout without needing to swap the spans for divs. */
+.v16-phone-text { display: flex; flex-direction: column; line-height: 1.05; }
 .v16-phone-num {
   color: white;
   font-weight: 800;
