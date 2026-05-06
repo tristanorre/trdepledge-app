@@ -16,6 +16,20 @@
 -- triggers (see 0005), because the service role *can* bypass RLS but
 -- *cannot* bypass triggers.
 
+-- ── Restore Supabase default grants ─────────────────────────────────
+-- If the public schema was dropped + recreated (a common reset path),
+-- the default grants Supabase relies on for service_role / anon /
+-- authenticated get wiped along with the old tables. Re-establish them
+-- before flipping RLS on, otherwise our service-role API routes get
+-- "permission denied for table X" errors.
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables    in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+grant all on all functions in schema public to service_role;
+alter default privileges in schema public grant all on tables    to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
+alter default privileges in schema public grant all on functions to service_role;
+
 -- Enable RLS on every business table.
 alter table public.enquiries           enable row level security;
 alter table public.users               enable row level security;
