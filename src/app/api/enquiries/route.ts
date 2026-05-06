@@ -5,6 +5,7 @@ import { sendPush } from "@/lib/onesignal";
 import { sendEmail } from "@/lib/email";
 import { sms } from "@/lib/sms-templates";
 import { rateLimit, clientIp } from "@/lib/rate-limit";
+import { after } from "@/lib/after";
 
 export const runtime = "nodejs";
 
@@ -186,7 +187,13 @@ export async function POST(req: Request) {
     }));
   }
 
-  await Promise.allSettled(sideEffects);
+  // Don't await side effects — register through `after()` so the
+  // function instance keeps running long enough for SMS / push / email
+  // to complete after we return 200 to the user. The user's
+  // submit-then-redirect flow shouldn't wait on Twilio + OneSignal +
+  // Resend round-trips, but we also can't `void` them on Vercel
+  // because the instance would be killed.
+  after(Promise.allSettled(sideEffects));
 
   return NextResponse.json({ ok: true, persisted: true, id: inserted.id });
 }

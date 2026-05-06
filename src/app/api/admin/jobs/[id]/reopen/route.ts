@@ -36,8 +36,15 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     }, { status: 400 });
   }
 
-  const log = (job.time_log ?? {}) as { start?: string; end?: string };
-  const nextLog: { start?: string } = log.start ? { start: log.start } : {};
+  // Strip every worker's `end` so the job comes back to "in progress"
+  // for the whole crew. Keep `start` values so original clock-in times
+  // are preserved (the typical reason to reopen is a mistapped clock-out
+  // — we don't want to also wipe out the "9:02am started" timestamp).
+  const log = (job.time_log ?? {}) as Record<string, { start?: string; end?: string }>;
+  const nextLog: Record<string, { start?: string }> = {};
+  for (const [wid, entry] of Object.entries(log)) {
+    if (entry?.start) nextLog[wid] = { start: entry.start };
+  }
 
   const { data, error } = await supabase
     .from("jobs")

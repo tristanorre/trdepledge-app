@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { sendPush } from "@/lib/onesignal";
+import { after } from "@/lib/after";
 
 export const runtime = "nodejs";
 
@@ -95,12 +96,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   // Push the worker so they see the decision without polling the app.
-  void sendPush({
+  // Registered through `after()` so the function instance stays alive
+  // long enough for OneSignal to deliver after we return 200.
+  after(sendPush({
     user_ids: [request.worker_id],
     title: status === "approved" ? "Leave approved" : "Leave declined",
     message: `${request.type} · ${request.from_date} → ${request.to_date}`,
     deep_link: "/worker/leave",
-  }, supabase);
+  }, supabase));
 
   return NextResponse.json({ ok: true });
 }

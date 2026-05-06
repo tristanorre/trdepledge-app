@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { mondayOfWeek, addDaysISO, fmtDayShort } from "@/lib/dates";
-import { hoursFromTimeLog } from "@/lib/cost";
+import { hoursForEntry, type TimeLog } from "@/lib/cost";
 import type { Job } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -48,9 +48,11 @@ export async function GET(req: Request) {
   const workerName = new Map((workers ?? []).map((w) => [w.id, w.name]));
 
   for (const j of (jobs ?? []) as Job[]) {
-    const hours = hoursFromTimeLog(j.time_log as { start?: string; end?: string });
-    if (hours <= 0 || !j.date) continue;
+    if (!j.date) continue;
+    const log = (j.time_log ?? {}) as TimeLog;
     for (const wid of j.assigned_worker_ids ?? []) {
+      const hours = hoursForEntry(log[wid]);
+      if (hours <= 0) continue;
       const name = workerName.get(wid);
       if (!name) continue; // worker no longer active or removed
       rows.push({

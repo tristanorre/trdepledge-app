@@ -57,8 +57,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  // Include the user id in the reset URL so the verification step
+  // looks up exactly one row by id and bcrypt.compare against that
+  // user's hash — instead of fetching every admin with a live token
+  // and comparing against each (O(N) bcrypt calls, leaks how many
+  // admins have outstanding resets via timing).
   const baseUrl = process.env.NEXTAUTH_URL ?? new URL(req.url).origin;
-  const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+  const resetUrl = `${baseUrl}/reset-password?token=${rawToken}&uid=${user.id}`;
 
   await sendEmail({
     to: email,

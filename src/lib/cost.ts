@@ -36,17 +36,27 @@ export type CostBreakdown = {
   total_cents: number;
 };
 
-export type TimeLog = { start?: string; end?: string };
+export type TimeEntry = { start?: string; end?: string };
+export type TimeLog = Record<string, TimeEntry>;
 
-// Hours derived from time_log. If clocked in but not out, count up to
-// "now" so the in-progress total is meaningful at a glance.
-export function hoursFromTimeLog(time_log: TimeLog | undefined, now = new Date()): number {
-  if (!time_log?.start) return 0;
-  const start = new Date(time_log.start);
-  const end = time_log.end ? new Date(time_log.end) : now;
+// Hours for a single worker (or the open clock if `end` is missing).
+// If clocked in but not out, count up to "now" so the in-progress total
+// is meaningful at a glance.
+export function hoursForEntry(entry: TimeEntry | undefined, now = new Date()): number {
+  if (!entry?.start) return 0;
+  const start = new Date(entry.start);
+  const end = entry.end ? new Date(entry.end) : now;
   const ms = end.getTime() - start.getTime();
   if (!Number.isFinite(ms) || ms <= 0) return 0;
   return ms / 3_600_000;
+}
+
+// Sum of hours across all workers in a `time_log`.
+export function totalHoursFromTimeLog(time_log: TimeLog | undefined, now = new Date()): number {
+  if (!time_log) return 0;
+  let total = 0;
+  for (const entry of Object.values(time_log)) total += hoursForEntry(entry, now);
+  return total;
 }
 
 export function calculateCost(
@@ -58,11 +68,16 @@ export function calculateCost(
   const rate_cents = rateFor(rates, job.client_type as ClientType);
   const worker_count = Math.max(1, job.assigned_worker_ids.length);
 
-  const hours = hoursFromTimeLog(job.time_log as TimeLog, now);
+  // `hours` here is the total worker-hours summed across the crew.
+  // Multiplying by rate gives the labour cost directly — no separate
+  // worker_count multiplier required (that's already baked in).
+  const hours = totalHoursFromTimeLog(job.time_log as TimeLog, now);
   const waiting_hours = (job.waiting_time_minutes ?? 0) / 60;
 
-  // Both labour and waiting bill per-worker per the spec.
-  const labour_cents  = Math.round(hours         * rate_cents * worker_count);
+  // Labour: sum of per-worker hours, billed once at the rate.
+  // Waiting time is recorded as a single number on the job, so it
+  // still bills per-worker (the whole crew waits together).
+  const labour_cents  = Math.round(hours         * rate_cents);
   const waiting_cents = Math.round(waiting_hours * rate_cents * worker_count);
 
   const material_lines = materials.map((m) => {

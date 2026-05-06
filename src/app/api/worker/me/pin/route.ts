@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { requireApiWorker, requireSupabase } from "@/lib/api-auth";
+import { rejectWeakPin } from "@/lib/pin";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,11 @@ export async function POST(req: Request) {
   if (!/^\d{4}$/.test(current)) return NextResponse.json({ error: "Current PIN must be 4 digits" }, { status: 400 });
   if (!/^\d{4}$/.test(next))    return NextResponse.json({ error: "New PIN must be 4 digits" }, { status: 400 });
   if (current === next) return NextResponse.json({ error: "New PIN must differ from current" }, { status: 400 });
+  // Reject the obviously-weak choices (1234, 0000, etc.). Cost-free
+  // upgrade — see lib/pin.ts for why this matters with a 5-fail
+  // lockout and a 10000-PIN keyspace.
+  const weak = rejectWeakPin(next);
+  if (weak) return NextResponse.json({ error: weak }, { status: 400 });
 
   const { data: user, error: readErr } = await supabase
     .from("users")

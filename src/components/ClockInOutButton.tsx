@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 type Props = {
   jobId: string;
+  userId: string;
   initialTimeLog: { start?: string; end?: string };
 };
 
@@ -20,7 +21,7 @@ function fmtTimeOfDay(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
 }
 
-export default function ClockInOutButton({ jobId, initialTimeLog }: Props) {
+export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Props) {
   const router = useRouter();
   const [log, setLog] = useState(initialTimeLog);
   const [submitting, setSubmitting] = useState(false);
@@ -46,8 +47,12 @@ export default function ClockInOutButton({ jobId, initialTimeLog }: Props) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not update");
-      setLog(data.job?.time_log ?? {});
-      router.refresh(); // pull fresh status from the server
+      // Pull this worker's entry out of the keyed-by-uuid `time_log`
+      // for the immediate visual update, then router.refresh() pulls
+      // the canonical state (job status etc.) from the server.
+      const fullLog = (data.job?.time_log ?? {}) as Record<string, { start?: string; end?: string }>;
+      setLog(fullLog[userId] ?? {});
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {

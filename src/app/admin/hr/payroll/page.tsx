@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { mondayOfWeek, addDaysISO, todayISO, fmtWeekRange, fmtDayShort } from "@/lib/dates";
-import { hoursFromTimeLog } from "@/lib/cost";
+import { hoursForEntry, type TimeLog } from "@/lib/cost";
 import type { Job } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +38,11 @@ export default async function PayrollPage({
     const workerName = new Map(workers.map((w) => [w.id, w.name]));
     const map = new Map<string, { worker_id: string; name: string; hours: number; jobs: number }>();
     for (const j of jobs) {
-      const h = hoursFromTimeLog(j.time_log as { start?: string; end?: string });
-      if (h <= 0 || !j.date) continue;
+      const log = (j.time_log ?? {}) as TimeLog;
+      if (!j.date) continue;
       for (const wid of j.assigned_worker_ids ?? []) {
+        const h = hoursForEntry(log[wid]);
+        if (h <= 0) continue;
         const name = workerName.get(wid);
         if (!name) continue;
         const cur = map.get(wid) ?? { worker_id: wid, name, hours: 0, jobs: 0 };
@@ -110,9 +112,11 @@ export default async function PayrollPage({
               </thead>
               <tbody>
                 {jobs.flatMap((j) => {
-                  const h = hoursFromTimeLog(j.time_log as { start?: string; end?: string });
-                  if (h <= 0 || !j.date) return [];
+                  const log = (j.time_log ?? {}) as TimeLog;
+                  if (!j.date) return [];
                   return (j.assigned_worker_ids ?? []).map((wid) => {
+                    const h = hoursForEntry(log[wid]);
+                    if (h <= 0) return null;
                     const name = workers.find((w) => w.id === wid)?.name;
                     if (!name) return null;
                     return (

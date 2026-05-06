@@ -9,6 +9,7 @@ export default function ResetPasswordForm() {
   const router = useRouter();
   const params = useSearchParams();
   const token = params.get("token") ?? "";
+  const uid = params.get("uid") ?? "";
 
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -19,7 +20,7 @@ export default function ResetPasswordForm() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!token) return setError("Reset link is missing its token. Request a new one.");
+    if (!token || !uid) return setError("Reset link is incomplete. Request a new one.");
     if (next.length < MIN_LEN) return setError(`Password must be at least ${MIN_LEN} characters`);
     if (next !== confirm) return setError("Passwords don't match");
 
@@ -28,7 +29,7 @@ export default function ResetPasswordForm() {
       const res = await fetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ token, new_password: next }),
+        body: JSON.stringify({ token, uid, new_password: next }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not reset");
@@ -49,11 +50,11 @@ export default function ResetPasswordForm() {
     );
   }
 
-  if (!token) {
+  if (!token || !uid) {
     return (
       <div role="alert" style={{ padding: 20, color: "#B91C1C", fontWeight: 600, textAlign: "center" }}>
-        This reset link is missing its token. Request a fresh link from the
-        sign-in page.
+        This reset link is missing required information. Request a fresh
+        link from the sign-in page.
       </div>
     );
   }

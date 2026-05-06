@@ -7,14 +7,18 @@ export const runtime = "nodejs";
 // Clock in/out for the current worker on a job they're assigned to.
 //   POST { action: "in" | "out" }
 //
-// Behaviour per spec:
-//   - "in":  start = now, status -> in_progress (if not already)
-//           Idempotent re-entry (already started) is a no-op success so
-//           a network retry doesn't lose the original timestamp.
-//   - "out": end = now, status -> completed
-//           Requires a prior "in"; otherwise 409.
+// time_log is keyed by worker uuid: `{ [worker_id]: { start, end } }`.
+// Each worker's clock-in/out is tracked independently so payroll
+// reflects who was actually there for how long.
 //
-// time_log shape: { start: ISO, end?: ISO }. Single pair per spec.
+// Status transitions:
+//   - "in":  worker's entry gets start=now (idempotent if already in).
+//            Job status moves to in_progress on the first clock-in.
+//   - "out": worker's entry gets end=now (idempotent if already out).
+//            Job status moves to "completed" only when ALL assigned
+//            workers have clocked out — otherwise it stays in_progress
+//            so a finished worker doesn't prematurely close the job
+//            for a colleague still on site.
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireApiWorker();
   if (auth instanceof NextResponse) return auth;
@@ -35,7 +39,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Authorisation via .contains() on the read.
   const { data: job, error: readErr } = await supabase
     .from("jobs")
-    .select("id, status, time_log")
+    .select("id, status, time_log, assigned_worker_ids")
     .eq("id", params.id)
     .contains("assigned_worker_ids", [session.user.id])
     .maybeSingle();
@@ -46,29 +50,41 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
   if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const log = (job.time_log ?? {}) as { start?: string; end?: string };
+  const fullLog = (job.time_log ?? {}) as Record<string, { start?: string; end?: string }>;
+  const myEntry = fullLog[session.user.id] ?? {};
   const now = new Date().toISOString();
   const patch: Record<string, unknown> = {};
 
   if (action === "in") {
-    if (log.start && !log.end) {
+    if (myEntry.start && !myEntry.end) {
       // Already clocked in — return current state untouched.
       return NextResponse.json({ job, already_clocked_in: true });
     }
-    patch.time_log = { start: now };
+    const nextLog = { ...fullLog, [session.user.id]: { start: now } };
+    patch.time_log = nextLog;
     if (job.status !== "in_progress" && job.status !== "completed") {
       patch.status = "in_progress" satisfies JobStatus;
     }
   } else {
-    if (!log.start) {
+    if (!myEntry.start) {
       return NextResponse.json({ error: "Cannot clock out — not clocked in." }, { status: 409 });
     }
-    if (log.end) {
-      // Already clocked out — surface but don't error.
+    if (myEntry.end) {
       return NextResponse.json({ job, already_clocked_out: true });
     }
-    patch.time_log = { ...log, end: now };
-    patch.status = "completed" satisfies JobStatus;
+    const nextLog = { ...fullLog, [session.user.id]: { ...myEntry, end: now } };
+    patch.time_log = nextLog;
+
+    // Only flip the job to "completed" once every assigned worker has
+    // clocked out. A worker finishing first shouldn't close the job
+    // for a colleague who's still on site.
+    const allOut = (job.assigned_worker_ids ?? []).every((wid: string) => {
+      const e = nextLog[wid];
+      return !!e?.start && !!e?.end;
+    });
+    if (allOut) {
+      patch.status = "completed" satisfies JobStatus;
+    }
   }
 
   const { data: updated, error: updateErr } = await supabase

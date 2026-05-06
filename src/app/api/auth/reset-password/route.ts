@@ -6,48 +6,51 @@ export const runtime = "nodejs";
 
 const MIN_LEN = 8;
 
-// POST /api/auth/reset-password  Body: { token, new_password }
+// POST /api/auth/reset-password  Body: { token, uid, new_password }
 //
-// Token is the raw hex string from the email; we look up admins with a
-// non-expired reset_token_hash and bcrypt.compare. If valid, set the new
-// password, clear the reset token, clear any lockout from migration 0011.
+// `uid` comes from the reset email link (`?token=…&uid=…`). We look up
+// that single admin, check the live token hash against the supplied
+// raw token, and update if it matches. The previous shape pulled every
+// admin with a live reset token and bcrypt.compare'd against each —
+// fine when there's one admin, but O(N) and timing-leaky as the team
+// grows.
 export async function POST(req: Request) {
-  let body: { token?: unknown; new_password?: unknown };
+  let body: { token?: unknown; uid?: unknown; new_password?: unknown };
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const token = String(body.token ?? "");
+  const uid = String(body.uid ?? "");
   const next = String(body.new_password ?? "");
   if (!token) return NextResponse.json({ error: "Token is required" }, { status: 400 });
+  // UUID v4 shape — keeps us from issuing a Postgres query with a
+  // syntactically invalid uuid that returns a 500-style error.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uid)) {
+    return NextResponse.json({ error: "Invalid or expired reset link" }, { status: 400 });
+  }
   if (next.length < MIN_LEN) return NextResponse.json({ error: `New password must be at least ${MIN_LEN} characters` }, { status: 400 });
 
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
 
-  // Pull every admin with a live token. This is cheap (one admin, one
-  // token at a time in our world), and avoids leaking timing info about
-  // which admin owns the token: we'd compare against each candidate
-  // hash anyway. Filter expired rows server-side.
   const nowIso = new Date().toISOString();
-  const { data: candidates } = await supabase
+  const { data: user } = await supabase
     .from("users")
-    .select("id, reset_token_hash")
+    .select("id, reset_token_hash, reset_token_expires_at")
+    .eq("id", uid)
     .eq("role", "admin")
-    .gt("reset_token_expires_at", nowIso)
-    .not("reset_token_hash", "is", null);
+    .eq("active", true)
+    .maybeSingle();
 
-  let userId: string | null = null;
-  for (const c of candidates ?? []) {
-    if (!c.reset_token_hash) continue;
-    if (await bcrypt.compare(token, c.reset_token_hash)) {
-      userId = c.id;
-      break;
-    }
-  }
+  // Constant-shape error for all "not a valid reset" cases — caller can
+  // never tell whether the uid was wrong, the token was wrong, or the
+  // window had expired.
+  const invalid = NextResponse.json({ error: "Invalid or expired reset link" }, { status: 400 });
+  if (!user || !user.reset_token_hash || !user.reset_token_expires_at) return invalid;
+  if (user.reset_token_expires_at <= nowIso) return invalid;
+  if (!(await bcrypt.compare(token, user.reset_token_hash))) return invalid;
 
-  if (!userId) {
-    return NextResponse.json({ error: "Invalid or expired reset link" }, { status: 400 });
-  }
+  const userId = user.id;
 
   const newHash = await bcrypt.hash(next, 10);
   const { error: updateErr } = await supabase

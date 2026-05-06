@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
-import { calculateCost, fmtMoney, type JobMaterialLine } from "@/lib/cost";
+import { calculateCost, fmtMoney, hoursForEntry, type JobMaterialLine } from "@/lib/cost";
 import { getRates } from "@/lib/config";
 import { todayISO } from "@/lib/dates";
 import { monthStart, monthEnd, addMonthsISO, fmtMonth } from "@/lib/month";
@@ -108,8 +108,14 @@ export default async function CostsPage({
     revByType[j.client_type as ClientType].cents += cost.total_cents;
     revByType[j.client_type as ClientType].jobs  += 1;
 
+    // Hours-by-worker now uses the per-worker entries in time_log
+    // directly (migration 0018) rather than attributing the same crew
+    // hours to every assigned worker.
+    const log = (j.time_log ?? {}) as Record<string, { start?: string; end?: string }>;
     for (const wid of j.assigned_worker_ids ?? []) {
-      hoursByWorker.set(wid, (hoursByWorker.get(wid) ?? 0) + cost.hours);
+      const h = hoursForEntry(log[wid]);
+      if (h <= 0) continue;
+      hoursByWorker.set(wid, (hoursByWorker.get(wid) ?? 0) + h);
     }
     for (const m of lines) {
       materialsCostBase += Math.round(m.base_price_cents * m.qty);

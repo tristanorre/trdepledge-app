@@ -72,17 +72,25 @@ export const authOptions: NextAuthOptions = {
         }
 
         if (mode === "worker") {
-          const workerId = credentials?.worker_id;
+          // `worker_id` from the form is now a `public_slug` (see
+          // migration 0017 + /api/auth/workers/route.ts). It's still
+          // posted under the `worker_id` field name to keep the
+          // credentials-provider config stable. Old code paths that
+          // pass a real UUID continue to work as a fallback while the
+          // backfill rolls out.
+          const workerKey = credentials?.worker_id;
           const pin = credentials?.pin ?? "";
-          if (!workerId || !pin || !/^\d{4}$/.test(pin)) return null;
+          if (!workerKey || !pin || !/^\d{4}$/.test(pin)) return null;
 
-          const { data: user, error } = await supabase
+          const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workerKey);
+          const lookup = supabase
             .from("users")
             .select("id, name, role, pin_hash, active, failed_login_attempts, locked_until")
-            .eq("id", workerId)
             .eq("role", "worker")
-            .eq("active", true)
-            .maybeSingle();
+            .eq("active", true);
+          const { data: user, error } = await (looksLikeUuid
+            ? lookup.eq("id", workerKey).maybeSingle()
+            : lookup.eq("public_slug", workerKey).maybeSingle());
           if (error || !user || !user.pin_hash) return null;
 
           if (isLocked(user.locked_until)) {

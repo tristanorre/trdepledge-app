@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { sendPush } from "@/lib/onesignal";
+import { after as runAfter } from "@/lib/after";
 import type { ClientType, JobStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -109,14 +110,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   if (prev && Array.isArray(patch.assigned_worker_ids)) {
     const before = new Set<string>(prev.assigned_worker_ids ?? []);
-    const after = (patch.assigned_worker_ids as string[]).filter((id) => !before.has(id));
-    if (after.length > 0) {
-      void sendPush({
-        user_ids: after,
+    const added = (patch.assigned_worker_ids as string[]).filter((id) => !before.has(id));
+    if (added.length > 0) {
+      runAfter(sendPush({
+        user_ids: added,
         title: "New job assigned",
         message: `${data.client_name}${data.suburb ? ` · ${data.suburb}` : ""}${data.scheduled_time ? ` · ${String(data.scheduled_time).slice(0, 5)}` : ""}`,
         deep_link: `/worker/jobs/${data.id}`,
-      }, supabase);
+      }, supabase));
     }
   }
 
@@ -126,12 +127,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
     ("scheduled_time" in patch && patch.scheduled_time !== prev.scheduled_time)
   );
   if (timeChanged && Array.isArray(data.assigned_worker_ids) && data.assigned_worker_ids.length > 0) {
-    void sendPush({
+    runAfter(sendPush({
       user_ids: data.assigned_worker_ids,
       title: "Job time updated",
       message: `${data.client_name} · ${data.date ?? "no date"}${data.scheduled_time ? ` · ${String(data.scheduled_time).slice(0, 5)}` : ""}`,
       deep_link: `/worker/jobs/${data.id}`,
-    }, supabase);
+    }, supabase));
   }
 
   // Bust the App Router cache so the next visit to the detail page or

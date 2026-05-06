@@ -5,6 +5,7 @@ import { sendSms, normaliseAuPhone } from "@/lib/twilio";
 import { sendPush } from "@/lib/onesignal";
 import { sms } from "@/lib/sms-templates";
 import { squareConfigured } from "@/lib/integrations";
+import { after } from "@/lib/after";
 
 export const runtime = "nodejs";
 // Webhook bodies need their raw bytes for signature verification, so
@@ -121,7 +122,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, deduped: true });
   }
 
-  void (async () => {
+  after((async () => {
     if (phone) {
       await sendSms(
         normaliseAuPhone(phone),
@@ -141,7 +142,7 @@ export async function POST(req: Request) {
         deep_link: `/admin/jobs/${job.id}/edit`,
       }, supabase);
     }
-  })();
+  })());
 
   return NextResponse.json({ ok: true, job_id: job.id }, { status: 201 });
 }

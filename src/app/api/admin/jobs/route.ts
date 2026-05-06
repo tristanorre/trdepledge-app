@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { sendPush } from "@/lib/onesignal";
+import { after } from "@/lib/after";
 import type { ClientType, JobStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -103,15 +104,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Could not create job" }, { status: 500 });
   }
 
-  // Push to assigned workers — fire-and-forget so a slow OneSignal
-  // call doesn't slow the admin's job-create round-trip.
+  // Push to assigned workers — registered via `after()` so the
+  // serverless function instance keeps running long enough for the
+  // OneSignal call to complete after we've returned 201.
   if (insert.assigned_worker_ids.length > 0) {
-    void sendPush({
+    after(sendPush({
       user_ids: insert.assigned_worker_ids as string[],
       title: "New job assigned",
       message: `${data.client_name}${data.suburb ? ` · ${data.suburb}` : ""}${data.scheduled_time ? ` · ${data.scheduled_time.slice(0, 5)}` : ""}`,
       deep_link: `/worker/jobs/${data.id}`,
-    }, supabase);
+    }, supabase));
   }
 
   return NextResponse.json({ job: data }, { status: 201 });

@@ -47,7 +47,13 @@ export type Job = {
   materials_used: unknown[];
   photos_before: string[];
   photos_after: string[];
-  time_log: Record<string, unknown>;
+  // Per-worker clock entries, keyed by user id. Each entry is at most
+  // one start + optional end (workers can't clock in twice without
+  // clocking out first). The `time_log` column is jsonb in Postgres,
+  // and the migration in 0018 converts the previous single
+  // `{start,end}` shape into this keyed form so all readers can
+  // assume the new shape.
+  time_log: Record<string, { start?: string; end?: string }>;
 
   invoice_sent: boolean;
   xero_invoice_id: string | null;
