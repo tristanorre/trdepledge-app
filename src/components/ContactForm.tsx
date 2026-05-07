@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
 
-const SERVICE_OPTIONS = [
+export const SERVICE_OPTIONS = [
   "Garden Maintenance",
   "Instant Lawn Install",
   "Yard Revamp",
@@ -16,9 +15,9 @@ const SERVICE_OPTIONS = [
   "Other / Not Sure",
 ] as const;
 
-type ServiceOption = (typeof SERVICE_OPTIONS)[number];
+export type ServiceOption = (typeof SERVICE_OPTIONS)[number];
 
-function isServiceOption(v: string): v is ServiceOption {
+export function isServiceOption(v: string): v is ServiceOption {
   return (SERVICE_OPTIONS as readonly string[]).includes(v);
 }
 
@@ -31,16 +30,16 @@ const CLIENT_TYPES = [
 
 type Status = "idle" | "submitting" | "success" | "error";
 
-export default function ContactForm() {
+// `initialService` is set by the parent server component from the URL
+// query (e.g. /contact?service=Hedge%20%26%20Tree%20Trimming) and pre-
+// selects the Service Type dropdown. Doing it server-side keeps the form
+// in the prerendered HTML — using `useSearchParams` here instead would
+// push the form behind a Suspense boundary and strip it from initial SSR.
+type Props = { initialService?: string };
+
+export default function ContactForm({ initialService = "" }: Props) {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-
-  // Pre-select the Service Type dropdown when the user lands here from a
-  // service card (e.g. /contact?service=Hedge%20%26%20Tree%20Trimming).
-  // Falls back to empty so the placeholder option stays selected.
-  const searchParams = useSearchParams();
-  const serviceParam = searchParams?.get("service") ?? "";
-  const initialService = isServiceOption(serviceParam) ? serviceParam : "";
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();

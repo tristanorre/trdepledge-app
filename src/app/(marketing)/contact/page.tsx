@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
-import ContactForm from "@/components/ContactForm";
+import ContactForm, { isServiceOption } from "@/components/ContactForm";
 import Reveal from "@/components/Reveal";
 
 export const metadata: Metadata = {
@@ -9,7 +8,20 @@ export const metadata: Metadata = {
     "Get in touch with T.R. Depledge Gardening & Maintenance. Call 0474 844 204 or send us a message — we'll get back to you within 1 business day.",
 };
 
-export default function ContactPage() {
+// Reading `searchParams` here opts the page out of static prerender, but
+// the form is what people actually come for — pre-filling its dropdown
+// server-side is worth a per-request render. The trade is a Suspense
+// boundary on a client component using `useSearchParams`, which strips
+// the form from the static HTML entirely.
+export default async function ContactPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ service?: string | string[] }>;
+}) {
+  const params = await searchParams;
+  const raw = Array.isArray(params.service) ? params.service[0] : params.service ?? "";
+  const initialService = isServiceOption(raw) ? raw : "";
+
   return (
     <>
       <section className="contact-hero">
@@ -30,9 +42,7 @@ export default function ContactPage() {
             <Reveal className="contact-form-wrap">
               <div className="form-title">Send Us a Message</div>
               <div className="form-sub">We&apos;ll get back to you within 1 business day.</div>
-              <Suspense fallback={null}>
-                <ContactForm />
-              </Suspense>
+              <ContactForm initialService={initialService} />
             </Reveal>
 
             <div className="contact-info-side">
