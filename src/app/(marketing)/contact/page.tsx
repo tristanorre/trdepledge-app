@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import ContactForm, { isServiceOption } from "@/components/ContactForm";
+import ContactForm from "@/components/ContactForm";
 import Reveal from "@/components/Reveal";
+import { isServiceOption } from "@/lib/services";
 
 export const metadata: Metadata = {
   title: "Contact",
@@ -13,13 +14,14 @@ export const metadata: Metadata = {
 // server-side is worth a per-request render. The trade is a Suspense
 // boundary on a client component using `useSearchParams`, which strips
 // the form from the static HTML entirely.
-export default async function ContactPage({
+export default function ContactPage({
   searchParams,
 }: {
-  searchParams: Promise<{ service?: string | string[] }>;
+  searchParams: { service?: string | string[] };
 }) {
-  const params = await searchParams;
-  const raw = Array.isArray(params.service) ? params.service[0] : params.service ?? "";
+  const raw = Array.isArray(searchParams.service)
+    ? searchParams.service[0] ?? ""
+    : searchParams.service ?? "";
   const initialService = isServiceOption(raw) ? raw : "";
 
   return (

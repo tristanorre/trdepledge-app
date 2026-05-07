@@ -1,25 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-export const SERVICE_OPTIONS = [
-  "Garden Maintenance",
-  "Instant Lawn Install",
-  "Yard Revamp",
-  "Landscaping",
-  "Hedge & Tree Trimming",
-  "Garden Clean-Up",
-  "NDIS Garden Support",
-  "Aged Care Services",
-  "Gift Card Enquiry",
-  "Other / Not Sure",
-] as const;
-
-export type ServiceOption = (typeof SERVICE_OPTIONS)[number];
-
-export function isServiceOption(v: string): v is ServiceOption {
-  return (SERVICE_OPTIONS as readonly string[]).includes(v);
-}
+import { SERVICE_OPTIONS } from "@/lib/services";
 
 const CLIENT_TYPES = [
   "Private Client",
