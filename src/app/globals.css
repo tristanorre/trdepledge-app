@@ -505,6 +505,31 @@ main { padding-top: var(--nav-h); }
 .service-card-image:hover .service-poster img { transform: scale(1.03); }
 .service-card-body { padding: 20px 24px 24px; }
 
+/* Whole-card link wrapper. `display:block` so the anchor occupies a
+   grid cell; color/decoration reset so card text renders the same as
+   when it wasn't a link. */
+.service-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.service-card-link:focus-visible { outline: 3px solid var(--lime); outline-offset: 4px; border-radius: 22px; }
+
+/* Footer row inside each card — keeps the existing tag pill aligned
+   left and pushes the "Enquire →" affordance to the right. */
+.service-card-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-top: 12px;
+}
+.service-enquire {
+  font-size: 13px; font-weight: 800; color: var(--navy);
+  letter-spacing: 0.2px;
+  margin-left: auto;
+  transition: transform 0.25s var(--ease);
+}
+.service-card-link:hover .service-enquire,
+.service-card-link:focus-visible .service-enquire { transform: translateX(3px); }
+
 /* ── WHY US ───────────────────────────────────── */
 .whyus-section { padding: 120px 0; background: var(--navy); position: relative; overflow: hidden; }
 .whyus-section::before {

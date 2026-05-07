@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import ContactForm from "@/components/ContactForm";
 import Reveal from "@/components/Reveal";
 
@@ -29,7 +30,9 @@ export default function ContactPage() {
             <Reveal className="contact-form-wrap">
               <div className="form-title">Send Us a Message</div>
               <div className="form-sub">We&apos;ll get back to you within 1 business day.</div>
-              <ContactForm />
+              <Suspense fallback={null}>
+                <ContactForm />
+              </Suspense>
             </Reveal>
 
             <div className="contact-info-side">

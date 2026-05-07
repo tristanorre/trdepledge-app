@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 const SERVICE_OPTIONS = [
   "Garden Maintenance",
@@ -15,6 +16,12 @@ const SERVICE_OPTIONS = [
   "Other / Not Sure",
 ] as const;
 
+type ServiceOption = (typeof SERVICE_OPTIONS)[number];
+
+function isServiceOption(v: string): v is ServiceOption {
+  return (SERVICE_OPTIONS as readonly string[]).includes(v);
+}
+
 const CLIENT_TYPES = [
   "Private Client",
   "NDIS Participant",
@@ -27,6 +34,13 @@ type Status = "idle" | "submitting" | "success" | "error";
 export default function ContactForm() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  // Pre-select the Service Type dropdown when the user lands here from a
+  // service card (e.g. /contact?service=Hedge%20%26%20Tree%20Trimming).
+  // Falls back to empty so the placeholder option stays selected.
+  const searchParams = useSearchParams();
+  const serviceParam = searchParams?.get("service") ?? "";
+  const initialService = isServiceOption(serviceParam) ? serviceParam : "";
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -126,7 +140,7 @@ export default function ContactForm() {
 
       <div className="form-group">
         <label className="form-label" htmlFor="service_type">Service Type *</label>
-        <select id="service_type" name="service_type" className="form-select" required defaultValue="">
+        <select id="service_type" name="service_type" className="form-select" required defaultValue={initialService}>
           <option value="" disabled>Select a service…</option>
           {SERVICE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
