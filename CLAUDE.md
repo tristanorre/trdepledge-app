@@ -38,7 +38,7 @@ Both ship from one Vercel deploy on different subdomains.
 - Format with `fmtMoney(cents)` at the edge, never in the middle.
 
 ### Integrations degrade gracefully
-- Each of OneSignal / Twilio / Xero / Square has a `<name>Configured()` helper
+- Each of OneSignal / Twilio / Xero has a `<name>Configured()` helper
   in [`src/lib/integrations.ts`](src/lib/integrations.ts).
 - Helpers (`sendSms`, `sendPush`, etc.) check this and **become no-ops** with
   a `console.warn` when env vars are missing. They still write to the relevant
@@ -131,7 +131,6 @@ src/
 │   │   ├── worker/            # worker-only endpoints
 │   │   ├── jobs/              # mixed-role endpoints (e.g. photos POST)
 │   │   ├── auth/              # NextAuth + worker list
-│   │   ├── webhooks/          # Square (no auth — verifies HMAC)
 │   │   ├── cron/              # Vercel Cron (auth via CRON_SECRET)
 │   │   └── enquiries/         # public contact form
 │   ├── globals.css            # marketing-only CSS, ported from prototype

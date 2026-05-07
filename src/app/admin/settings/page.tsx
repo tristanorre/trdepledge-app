@@ -17,7 +17,6 @@ const META: Record<IntegrationKey, {
     blurb: "Auto-replies to enquiries, booking confirmations, and one-tap manual templates from job detail pages.",
     triggers: [
       "Auto: enquiry received → reply within 60s",
-      "Auto: Square booking → confirmation",
       "Manual: On our way / Job complete / Quote follow-up / NDIS / custom",
     ],
     setupHint: "twilio.com → Account SID, Auth Token, From Number",
@@ -27,7 +26,7 @@ const META: Record<IntegrationKey, {
     blurb: "Push notifications for job assignment, schedule changes, leave decisions.",
     triggers: [
       "Worker: new job assigned, schedule change, leave decision",
-      "Admin: new enquiry, new Square booking, leave submitted",
+      "Admin: new enquiry, leave submitted",
     ],
     setupHint: "OneSignal app already created — add NEXT_PUBLIC_ONESIGNAL_APP_ID + ONESIGNAL_REST_API_KEY to Vercel",
   },
@@ -39,16 +38,6 @@ const META: Record<IntegrationKey, {
       "Weekly: payroll timesheet export (Slice 8)",
     ],
     setupHint: "developer.xero.com → register an app, set redirect URI to /api/admin/xero/callback",
-  },
-  square: {
-    name: "Square (Bookings)",
-    blurb: "Webhook listens for completed payments and creates a draft job for Thomas to review.",
-    triggers: [
-      "PAYMENT_COMPLETED → draft job (status: pending_review)",
-      "Auto SMS confirmation to client",
-      "Push to Thomas to review and assign workers",
-    ],
-    setupHint: "Square dashboard → webhook URL: /api/webhooks/square + Subscribe to payment.created and payment.updated",
   },
   email: {
     name: "Email (Resend)",

@@ -1,14 +1,10 @@
 -- Idempotency surfaces — proper unique-index dedup for webhooks + cron.
 --
--- M9: Square webhook dedup currently lives inside `description` as a
--- substring `square:<payment.id>`. Works, but:
---   * matches via ILIKE on every retry (table scan as the table grows)
---   * can be tripped by a manual job description containing the magic
---     prefix (silently mis-deduplicates)
---   * surfaces the dedup key to the customer if `description` is ever
---     printed on an invoice
--- The fix is a dedicated, indexed `external_ref` column with a unique
--- partial index, and ON CONFLICT DO NOTHING at insert time.
+-- M9: Generic external-reference dedup for any future webhook source
+-- that creates jobs. A dedicated, indexed `external_ref` column with a
+-- partial unique index lets the webhook handler do
+-- `INSERT … ON CONFLICT (external_ref) DO NOTHING` instead of grepping
+-- `description` (which is a free-text field shown on invoices).
 --
 -- M19: cron jobs (shift-reminder, job-reminders) don't currently track
 -- which days they've already run. A retry from Vercel after a flaky

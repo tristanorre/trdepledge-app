@@ -14,7 +14,7 @@ Both share one Supabase database and one deploy.
 - NextAuth.js (Credentials provider — admin email/password + worker PIN)
 - Tailwind CSS (utilities — marketing pages use hand-authored CSS to match approved prototype 1:1)
 - DM Sans + DM Serif Display via `next/font`
-- OneSignal (push), Twilio (SMS), Xero (invoicing), Square (booking webhook)
+- OneSignal (push), Twilio (SMS), Xero (invoicing)
 - Vercel hosting (Cron + serverless functions)
 
 ## Run locally
@@ -50,10 +50,6 @@ XERO_CLIENT_SECRET=
 XERO_REDIRECT_URI=https://app.trdepledgegardeningandmaintenance.com/api/admin/xero/callback
 XERO_SALES_ACCOUNT_CODE=200               # override if your Xero chart of accounts differs
 
-SQUARE_ACCESS_TOKEN=
-SQUARE_LOCATION_ID=
-SQUARE_WEBHOOK_SIGNATURE_KEY=
-
 # Vercel Cron auth — set to a random string and Vercel will pass it in
 CRON_SECRET=...
 
@@ -61,7 +57,7 @@ CRON_SECRET=...
 ENQUIRY_NOTIFY_EMAIL=t.rdepledge@outlook.com
 ```
 
-Without integration credentials, the contact form, push, SMS, and Xero/Square paths log a warning and become no-ops. Job management, scheduling, HR, inventory, and time tracking work fully without any third-party.
+Without integration credentials, the contact form, push, SMS, and Xero paths log a warning and become no-ops. Job management, scheduling, HR, inventory, and time tracking work fully without any third-party.
 
 ## Database
 
@@ -145,9 +141,8 @@ NextAuth (not Supabase Auth) handles sessions. All DB access uses the service-ro
 /worker/leave      Balances + submit + history
 ```
 
-### Webhooks + cron
+### Cron
 ```
-POST /api/webhooks/square              Square PAYMENT_COMPLETED
 GET  /api/cron/job-reminders           Vercel Cron (08:30 UTC daily)
 ```
 
@@ -175,7 +170,6 @@ The endpoint requires `Authorization: Bearer $CRON_SECRET` — Vercel sends this
    - Have each worker open the worker URL on their phone, log in with PIN `1234`, change the PIN.
    - On first worker login, the OneSignal SDK prompts for notification permission — accept it.
    - Connect Xero from `/admin/settings` (OAuth flow).
-   - In the Square dashboard, add the production webhook URL `…/api/webhooks/square` for `payment.created` and `payment.updated` events. Copy the signature key into `SQUARE_WEBHOOK_SIGNATURE_KEY`.
    - In Twilio, configure the messaging service for the AU number listed in the spec.
 
 ## PWA
@@ -203,7 +197,7 @@ API responses are **never cached** — `/api/*` always goes to the network. So a
 - [x] **Slice 4** — Time tracking, materials & costing, photos
 - [x] **Slice 5** — Schedule, Time Allocation Board, HR/roster/leave
 - [x] **Slice 6** — Inventory module + immutable audit feed UI
-- [x] **Slice 7** — OneSignal, Twilio, Square webhook, Xero OAuth + Settings
+- [x] **Slice 7** — OneSignal, Twilio, Xero OAuth + Settings
 - [x] **Slice 8** — Xero invoice + payroll CSV, Vercel cron, PWA, deploy notes
 
 ## Image extraction
