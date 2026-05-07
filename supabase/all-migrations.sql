@@ -1,6 +1,6 @@
 -- ============================================================
 -- T.R. Depledge — full schema, paste this into Supabase SQL editor.
--- Generated 2026-05-07T22:30:36Z by scripts/build-all-migrations.sh
+-- Generated 2026-05-07T23:46:19Z by scripts/build-all-migrations.sh
 -- Idempotent: safe to re-run on a fresh project.
 -- ============================================================
 
@@ -1019,22 +1019,36 @@ alter table public.users
 -- Idempotent — only triggers on rows that still match the legacy
 -- shape (`time_log ? 'start'`).
 
-update public.jobs
-   set time_log = (
-     select coalesce(
-       jsonb_object_agg(
-         wid::text,
-         jsonb_strip_nulls(jsonb_build_object(
-           'start', time_log->>'start',
-           'end',   time_log->>'end'
-         ))
-       ),
-       '{}'::jsonb
-     )
-     from unnest(assigned_worker_ids) as wid
-   )
- where time_log ? 'start'
-   and coalesce(array_length(assigned_worker_ids, 1), 0) > 0;
+-- CTE form (rather than a correlated scalar subquery in SET) so the
+-- aggregate is unambiguously single-row per job. The earlier
+--   set time_log = (select … from unnest(assigned_worker_ids))
+-- shape tripped Postgres with "more than one row returned by a
+-- subquery used as an expression" on some planners, even though
+-- jsonb_object_agg should collapse to one row. The explicit GROUP BY
+-- per-job here removes any ambiguity.
+with row_logs as (
+  select
+    j.id,
+    coalesce(
+      jsonb_object_agg(
+        wid::text,
+        jsonb_strip_nulls(jsonb_build_object(
+          'start', j.time_log->>'start',
+          'end',   j.time_log->>'end'
+        ))
+      ),
+      '{}'::jsonb
+    ) as new_time_log
+  from public.jobs j
+  cross join lateral unnest(j.assigned_worker_ids) as wid
+  where j.time_log ? 'start'
+    and coalesce(array_length(j.assigned_worker_ids, 1), 0) > 0
+  group by j.id
+)
+update public.jobs as j
+   set time_log = rl.new_time_log
+  from row_logs rl
+ where j.id = rl.id;
 
 -- Edge case: a legacy row with `time_log = { start, end }` but no
 -- workers (shouldn't happen in real data, but be safe). Reset to {}.
