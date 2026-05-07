@@ -414,7 +414,12 @@ main { padding-top: var(--nav-h); }
   aspect-ratio: 4/5; display: flex; align-items: center; justify-content: center; position: relative;
 }
 .about-float-badge {
-  position: absolute; bottom: -20px; right: -20px;
+  /* Anchored just below the portrait so it clears the in-image
+     "LOCAL · RELIABLE · MEMORABLE" brand strip — overlapping image
+     text was the original bug. */
+  position: absolute; top: 100%; right: 16px;
+  bottom: auto; left: auto;
+  margin-top: 16px;
   background: var(--lime); color: var(--navy);
   padding: 20px 24px; border-radius: 16px;
   font-weight: 800; font-size: 13px;
