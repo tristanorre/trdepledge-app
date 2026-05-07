@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Reveal from "@/components/Reveal";
+import BookCta from "@/components/BookCta";
 
 export const metadata: Metadata = {
   title: "About Us",
@@ -31,7 +32,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section style={{ padding: "80px 0" }}>
+      <section style={{ padding: "80px 0", background: "var(--off)" }}>
         <div className="container" style={{ maxWidth: 860 }}>
           <div className="about-story">
             <Reveal as="p" className="lead">
@@ -84,8 +85,12 @@ export default function AboutPage() {
               <div className="quote-author" style={{ color: "var(--navy-light)" }}>— Thomas Depledge</div>
             </Reveal>
           </div>
+        </div>
+      </section>
 
-          <Reveal style={{ marginTop: 64 }}>
+      <section style={{ padding: "80px 0" }}>
+        <div className="container" style={{ maxWidth: 860 }}>
+          <Reveal>
             <div className="eyebrow dark">Our Team</div>
             <h2 className="section-title">The People Behind<br /><em>The Work</em></h2>
             <p style={{ fontSize: 16, color: "var(--gray)", lineHeight: 1.75, marginBottom: 32 }}>
@@ -120,6 +125,12 @@ export default function AboutPage() {
           </Reveal>
         </div>
       </section>
+
+      <BookCta
+        eyebrow="Work With Us"
+        title={<>Want the Same <em>Local</em><br />Touch?</>}
+        lead="Get in touch — we'll quote your job honestly and get it done properly."
+      />
     </>
   );
 }

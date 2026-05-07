@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import Image from "next/image";
 import Reveal from "@/components/Reveal";
+import BookCta from "@/components/BookCta";
 
 export const metadata: Metadata = {
   title: "Services",
@@ -124,14 +124,12 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      <section style={{ padding: "56px 0", background: "var(--off)", textAlign: "center" }}>
-        <div className="container">
-          <p style={{ fontSize: 18, color: "var(--gray)", marginBottom: 28, lineHeight: 1.6 }}>
-            Interested in a service? Contact us for a tailored quote — we&apos;re happy to discuss your needs and provide honest, transparent pricing.
-          </p>
-          <Link href="/contact" className="btn btn-primary btn-lg">Get a Free Quote →</Link>
-        </div>
-      </section>
+      <BookCta
+        eyebrow="Get a Quote"
+        title={<>Interested? <em>Let&apos;s</em> Talk.</>}
+        lead="Tell us about your job and we'll provide honest, transparent pricing tailored to your needs."
+        primaryLabel="Get a Free Quote →"
+      />
     </>
   );
 }

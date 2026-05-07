@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import BookCta from "@/components/BookCta";
 
 export const metadata: Metadata = {
   title: "Reviews",
@@ -12,25 +13,38 @@ export const metadata: Metadata = {
 // short list, swap this for a card grid with photo + quote + suburb.
 export default function ReviewsPage() {
   return (
-    <section style={{ padding: "80px 0", background: "var(--yellow)", minHeight: 480 }}>
-      <div className="container" style={{ maxWidth: 720, textAlign: "center" }}>
-        <div className="eyebrow dark" style={{ justifyContent: "center" }}>What Our Clients Say</div>
-        <h1
-          className="section-title"
-          style={{ marginBottom: 16 }}
-        >
-          Reviews <em>coming soon</em>
-        </h1>
-        <p style={{ fontSize: 16, lineHeight: 1.7, color: "var(--gray)", marginBottom: 24 }}>
-          We&apos;re collecting genuine reviews from our regular clients across
-          the Copper Coast. If you&apos;ve worked with us and would like to share
-          your experience, we&apos;d love to hear from you.
-        </p>
-        <div style={{ display: "inline-flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-          <Link href="/contact" className="btn btn-primary">Leave a Review →</Link>
-          <Link href="/services" className="btn btn-outline">See What We Offer</Link>
+    <>
+      <section style={{ padding: "80px 0", background: "var(--yellow)" }}>
+        <div className="container" style={{ maxWidth: 720, textAlign: "center" }}>
+          <div className="eyebrow dark" style={{ justifyContent: "center" }}>What Our Clients Say</div>
+          <h1
+            className="section-title"
+            style={{ marginBottom: 16 }}
+          >
+            Reviews <em>coming soon</em>
+          </h1>
+          <p style={{ fontSize: 16, lineHeight: 1.7, color: "var(--navy)", marginBottom: 24 }}>
+            We&apos;re collecting genuine reviews from our regular clients across
+            the Copper Coast. If you&apos;ve worked with us and would like to share
+            your experience, we&apos;d love to hear from you.
+          </p>
+          <div style={{ display: "inline-flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+            <Link href="/contact" className="btn btn-primary">Leave a Review →</Link>
+            <Link href="/services" className="btn btn-outline">See What We Offer</Link>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section style={{ padding: "64px 0", background: "var(--off)", textAlign: "center" }}>
+        <div className="container" style={{ maxWidth: 720 }}>
+          <p style={{ fontSize: 16, color: "var(--gray)", lineHeight: 1.7 }}>
+            In the meantime, you can find out more about our services or the team
+            behind the work — or just give Thomas a call to chat about your garden.
+          </p>
+        </div>
+      </section>
+
+      <BookCta />
+    </>
   );
 }

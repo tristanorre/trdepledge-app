@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import HomeHero from "@/components/HomeHero";
 import Reveal from "@/components/Reveal";
+import BookCta from "@/components/BookCta";
 
 // Service-name strip that scrolls along the bottom of v16's hero. Pure
 // markup so it stays a server component — animation is CSS-only.
@@ -252,27 +253,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* BOOK CTA */}
-      <section className="book-section">
-        <div className="container">
-          <div className="book-inner">
-            <Reveal className="eyebrow" style={{ justifyContent: "center", color: "var(--lime)" }}>
-              Get Started Today
-            </Reveal>
-            <Reveal as="h2" className="section-title light">Ready for a <em>Better</em><br />Garden?</Reveal>
-            <Reveal as="p" className="section-lead light" style={{ margin: "0 auto" }}>Book online or give Thomas a call. We&apos;ll get your garden sorted — professionally, reliably, and at a fair price.</Reveal>
-            <Reveal className="book-actions">
-              <Link href="/contact" className="btn btn-primary btn-lg">Book Online Now →</Link>
-              <a href="tel:0474844204" className="btn btn-secondary btn-lg">📞 0474 844 204</a>
-            </Reveal>
-            <Reveal className="book-payment-methods">
-              {["Visa", "Mastercard", "Apple Pay", "Google Pay", "Afterpay", "EFTPOS"].map((p) => (
-                <span key={p} className="payment-pill">{p}</span>
-              ))}
-            </Reveal>
-          </div>
-        </div>
-      </section>
+      <BookCta />
     </>
   );
 }

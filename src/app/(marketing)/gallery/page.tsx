@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import Image from "next/image";
+import BookCta from "@/components/BookCta";
 
 export const metadata: Metadata = {
   title: "Our Work",
@@ -49,14 +49,12 @@ export default function GalleryPage() {
         </div>
       </div>
 
-      <section style={{ padding: "64px 0", textAlign: "center", background: "var(--off)" }}>
-        <div className="container">
-          <p style={{ fontSize: 16, color: "var(--gray)", marginBottom: 24 }}>
-            Want to see your garden transformed? Get in touch for a quote.
-          </p>
-          <Link href="/contact" className="btn btn-primary btn-lg">Book a Job →</Link>
-        </div>
-      </section>
+      <BookCta
+        eyebrow="Your Garden Next?"
+        title={<>Want a Yard That <em>Turns</em><br />Heads?</>}
+        lead="Get in touch and we'll transform your garden — clean, neat, and done properly."
+        primaryLabel="Book a Job →"
+      />
     </>
   );
 }

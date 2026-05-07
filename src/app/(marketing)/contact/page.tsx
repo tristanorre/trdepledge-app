@@ -23,7 +23,7 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <section className="contact-body">
+      <section className="contact-body" style={{ background: "var(--off)" }}>
         <div className="container">
           <div className="contact-layout">
             <Reveal className="contact-form-wrap">
