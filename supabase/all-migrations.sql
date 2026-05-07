@@ -1,6 +1,6 @@
 -- ============================================================
 -- T.R. Depledge — full schema, paste this into Supabase SQL editor.
--- Generated 2026-05-06T01:24:12Z by scripts/build-all-migrations.sh
+-- Generated 2026-05-07T22:30:36Z by scripts/build-all-migrations.sh
 -- Idempotent: safe to re-run on a fresh project.
 -- ============================================================
 
@@ -52,7 +52,6 @@ alter table public.enquiries enable row level security;
 -- yet — kept as a comment so Slice 1 picks it up:
 -- create trigger enquiries_set_updated_at before update on public.enquiries
 --   for each row execute function public.set_updated_at();
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0002_users.sql
@@ -113,7 +112,6 @@ drop trigger if exists users_set_updated_at on public.users;
 create trigger users_set_updated_at
   before update on public.users
   for each row execute function public.set_updated_at();
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0003_clients_and_jobs.sql
@@ -220,7 +218,6 @@ create table if not exists public.job_materials (
 
 create index if not exists job_materials_job_idx on public.job_materials (job_id);
 
-
 -- ────────────────────────────────────────────────────────────
 -- 0004_roster_and_leave.sql
 -- ────────────────────────────────────────────────────────────
@@ -289,7 +286,6 @@ create table if not exists public.leave_balances (
 
   unique (worker_id, year)
 );
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0005_assets_and_audit_log.sql
@@ -372,7 +368,6 @@ revoke update, delete, truncate on public.audit_log from anon;
 revoke update, delete, truncate on public.audit_log from authenticated;
 revoke update, delete, truncate on public.audit_log from service_role;
 
-
 -- ────────────────────────────────────────────────────────────
 -- 0006_materials_and_config.sql
 -- ────────────────────────────────────────────────────────────
@@ -419,7 +414,6 @@ insert into public.config (key, value) values
   ('ndis_support_item',          '01_019_0120_1_1'),
   ('cancellation_notice_days',   '7')
 on conflict (key) do nothing;
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0007_notifications_sms_xero.sql
@@ -476,7 +470,6 @@ drop trigger if exists xero_tokens_set_updated_at on public.xero_tokens;
 create trigger xero_tokens_set_updated_at
   before update on public.xero_tokens
   for each row execute function public.set_updated_at();
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0008_rls_policies.sql
@@ -554,7 +547,6 @@ revoke all on public.config              from anon;
 revoke all on public.notifications       from anon;
 revoke all on public.sms_log             from anon;
 revoke all on public.xero_tokens         from anon;
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0009_seed_users_and_inventory.sql
@@ -661,7 +653,6 @@ insert into public.assets (name, identifier, category, icon, condition, notes) v
   ('Fertiliser Bags', null, 'Materials Stock', '🌾', 'In Stock', '8 × 25kg bags'),
   ('Mulch (bulk)',    null, 'Materials Stock', '🪵', 'In Stock', '~3 cubic metres');
 
-
 -- ────────────────────────────────────────────────────────────
 -- 0010_storage_bucket.sql
 -- ────────────────────────────────────────────────────────────
@@ -684,7 +675,6 @@ insert into storage.buckets (id, name, public)
 values ('job-photos', 'job-photos', false)
 on conflict (id) do nothing;
 
-
 -- ────────────────────────────────────────────────────────────
 -- 0011_user_lockout.sql
 -- ────────────────────────────────────────────────────────────
@@ -704,7 +694,6 @@ alter table public.users
 
 create index if not exists users_locked_idx on public.users (locked_until)
   where locked_until is not null;
-
 
 -- ────────────────────────────────────────────────────────────
 -- 0012_password_reset.sql
@@ -730,3 +719,326 @@ create index if not exists users_reset_token_idx
   on public.users (reset_token_expires_at)
   where reset_token_hash is not null;
 
+-- ────────────────────────────────────────────────────────────
+-- 0013_enquiries_caps.sql
+-- ────────────────────────────────────────────────────────────
+-- Defense in depth on the public enquiries form.
+--
+-- The /api/enquiries route already truncates oversized inputs at the
+-- application layer, but a misconfigured client (or a future bug that
+-- bypasses the truncation helper) shouldn't be able to dump a megabyte
+-- of SEO spam into a single row. The CHECK constraints here are a
+-- last-ditch guard at the database boundary.
+--
+-- Limits match the application caps in src/app/api/enquiries/route.ts.
+-- If you change them, change both — they're not auto-generated.
+
+alter table public.enquiries
+  add constraint enquiries_first_name_len    check (char_length(first_name)   <= 80),
+  add constraint enquiries_last_name_len     check (char_length(last_name)    <= 80),
+  add constraint enquiries_email_len         check (char_length(email)        <= 200),
+  add constraint enquiries_phone_len         check (phone is null         or char_length(phone)        <= 32),
+  add constraint enquiries_suburb_len        check (char_length(suburb)       <= 120),
+  add constraint enquiries_service_type_len  check (char_length(service_type) <= 80),
+  add constraint enquiries_client_type_len   check (client_type is null   or char_length(client_type)  <= 80),
+  add constraint enquiries_message_len       check (message is null       or char_length(message)      <= 2000);
+
+-- ────────────────────────────────────────────────────────────
+-- 0014_job_array_appends.sql
+-- ────────────────────────────────────────────────────────────
+-- Atomic array-append RPCs for the `jobs` table — fixes a read-modify-write
+-- race on `photos_before`, `photos_after`, and `notes`.
+--
+-- The old pattern in /api/jobs/[id]/photos and /api/.../notes was:
+--   1. select photos_before from jobs where id = ?
+--   2. const next = [...row.photos_before, newPath]
+--   3. update jobs set photos_before = $next where id = ?
+-- Two simultaneous uploads on a job (admin + worker, or two workers
+-- on a phone with iffy signal retrying) would each read the same
+-- starting array, append, and overwrite the other's append. Net
+-- result: orphan blobs in storage with no DB reference.
+--
+-- Postgres `array_append` (text[]) and `||` (jsonb) are atomic under
+-- a single UPDATE statement, so doing the append in SQL closes the
+-- race entirely.
+--
+-- Authorisation is included in the function so the call site stays a
+-- single round-trip:
+--   * Admin path: pass NULL as p_worker_id → no scope filter
+--   * Worker path: pass the worker's user id → `assigned_worker_ids`
+--     must contain that id, otherwise the UPDATE matches zero rows
+--     and the RPC returns false (treat as 404 client-side).
+--
+-- Caps:
+--   * notes:      200 entries — well past anything realistic for a
+--                 single job's lifetime; just stops a runaway loop
+--                 from inflating one row to MB scale.
+--   * photos_*:    50 entries per kind — same reasoning.
+-- The functions silently no-op on cap breach (return false). The
+-- caller can decide whether to surface that as an error.
+
+set search_path = public;
+
+create or replace function public.append_job_photo(
+  p_job_id    uuid,
+  p_kind      text,           -- 'before' | 'after'
+  p_path      text,
+  p_worker_id uuid             -- null for admin
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  affected int;
+begin
+  if p_kind not in ('before', 'after') then
+    raise exception 'p_kind must be before or after';
+  end if;
+
+  if p_kind = 'before' then
+    update public.jobs
+       set photos_before = array_append(coalesce(photos_before, '{}'::text[]), p_path)
+     where id = p_job_id
+       and coalesce(array_length(photos_before, 1), 0) < 50
+       and (p_worker_id is null or assigned_worker_ids @> array[p_worker_id]);
+  else
+    update public.jobs
+       set photos_after = array_append(coalesce(photos_after, '{}'::text[]), p_path)
+     where id = p_job_id
+       and coalesce(array_length(photos_after, 1), 0) < 50
+       and (p_worker_id is null or assigned_worker_ids @> array[p_worker_id]);
+  end if;
+
+  get diagnostics affected = row_count;
+  return affected = 1;
+end;
+$$;
+
+create or replace function public.append_job_note(
+  p_job_id    uuid,
+  p_note      jsonb,            -- { author_id, author_name, text, timestamp }
+  p_worker_id uuid               -- null for admin
+) returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  affected int;
+begin
+  update public.jobs
+     set notes = coalesce(notes, '[]'::jsonb) || jsonb_build_array(p_note)
+   where id = p_job_id
+     and jsonb_array_length(coalesce(notes, '[]'::jsonb)) < 200
+     and (p_worker_id is null or assigned_worker_ids @> array[p_worker_id]);
+
+  get diagnostics affected = row_count;
+  return affected = 1;
+end;
+$$;
+
+-- Lock execution to the service role + authenticated. Public would let
+-- the anon role call them, which we never want.
+revoke all on function public.append_job_photo(uuid, text, text, uuid) from public;
+revoke all on function public.append_job_note(uuid, jsonb, uuid) from public;
+grant execute on function public.append_job_photo(uuid, text, text, uuid) to service_role, authenticated;
+grant execute on function public.append_job_note(uuid, jsonb, uuid) to service_role, authenticated;
+
+-- ────────────────────────────────────────────────────────────
+-- 0015_leave_balance_atomic.sql
+-- ────────────────────────────────────────────────────────────
+-- Atomic upsert + increment for the leave_balances counters.
+--
+-- Replaces a select-then-insert-or-update pattern in
+-- /api/admin/leave/[id]/route.ts where two simultaneous admin
+-- approvals could both read `current = X`, both write `X + days`, and
+-- silently drop one approval's days. Today there's only one admin so
+-- the race is theoretical, but the SQL is cheap and the bug class is
+-- the kind that surfaces as "the numbers don't match" much later.
+--
+-- The function is column-name-driven (annual_used, sick_used,
+-- personal_used) so we don't need three separate functions. The
+-- column name is sanitised to an allowlist in plpgsql to keep the
+-- dynamic SQL safe — no user input ever reaches the format() call.
+
+set search_path = public;
+
+create or replace function public.increment_leave_balance(
+  p_worker_id uuid,
+  p_year      int,
+  p_column    text,            -- 'annual_used' | 'sick_used' | 'personal_used'
+  p_days      int
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_column not in ('annual_used', 'sick_used', 'personal_used') then
+    raise exception 'p_column must be annual_used | sick_used | personal_used';
+  end if;
+  if p_days <= 0 then
+    return;
+  end if;
+
+  -- ON CONFLICT (worker_id, year) requires a unique constraint on those
+  -- two columns; the migration that defined leave_balances already
+  -- declares it (0004_roster_and_leave.sql). The format() call only
+  -- substitutes the column name we just allowlisted above.
+  execute format($f$
+    insert into public.leave_balances (worker_id, year, %1$I)
+    values ($1, $2, $3)
+    on conflict (worker_id, year) do update
+      set %1$I = coalesce(public.leave_balances.%1$I, 0) + excluded.%1$I
+  $f$, p_column)
+  using p_worker_id, p_year, p_days;
+end;
+$$;
+
+revoke all on function public.increment_leave_balance(uuid, int, text, int) from public;
+grant execute on function public.increment_leave_balance(uuid, int, text, int) to service_role;
+
+-- ────────────────────────────────────────────────────────────
+-- 0016_idempotency_keys.sql
+-- ────────────────────────────────────────────────────────────
+-- Idempotency surfaces — proper unique-index dedup for webhooks + cron.
+--
+-- M9: Generic external-reference dedup for any future webhook source
+-- that creates jobs. A dedicated, indexed `external_ref` column with a
+-- partial unique index lets the webhook handler do
+-- `INSERT … ON CONFLICT (external_ref) DO NOTHING` instead of grepping
+-- `description` (which is a free-text field shown on invoices).
+--
+-- M19: cron jobs (shift-reminder, job-reminders) don't currently track
+-- which days they've already run. A retry from Vercel after a flaky
+-- run could send duplicate notifications. A `cron_runs` table keyed
+-- on (job_name, run_date) gives us "already ran for today, skip" with
+-- a single insert + ON CONFLICT.
+
+-- ── M9: Jobs.external_ref
+alter table public.jobs
+  add column if not exists external_ref text;
+
+-- Partial unique index — `external_ref` is null for normal jobs (most
+-- of them), and a UNIQUE on a nullable column with multiple nulls is
+-- only legal as a partial index in Postgres.
+create unique index if not exists jobs_external_ref_uniq
+  on public.jobs (external_ref)
+  where external_ref is not null;
+
+-- ── M19: Cron run tracking
+create table if not exists public.cron_runs (
+  job_name   text        not null,
+  run_date   date        not null,
+  ran_at     timestamptz not null default now(),
+  detail     jsonb,
+  primary key (job_name, run_date)
+);
+
+-- This table is service-role only. Cron handlers always run through
+-- the service-role key; no admin/worker UI ever touches it.
+alter table public.cron_runs enable row level security;
+-- (no policies → no access for anon/authenticated; service_role
+--  bypasses RLS as usual)
+
+-- ────────────────────────────────────────────────────────────
+-- 0017_user_public_slug.sql
+-- ────────────────────────────────────────────────────────────
+-- Public slug for workers — stops the login dropdown leaking real
+-- internal user UUIDs to the open internet.
+--
+-- Today /api/auth/workers returns `{ id: uuid, name, colour }` to any
+-- visitor of the login page. The id is then POSTed back as the
+-- credentials provider's `worker_id`. Two consequences:
+--
+--   1. UUIDs are stable, sortable identifiers we use across other
+--      tables (jobs.assigned_worker_ids, leave_requests.worker_id,
+--      audit_log.actor_id). Leaking them makes targeted attacks
+--      easier — a brute-forcer who already knows a name can lock that
+--      specific account by failing PIN attempts under that UUID, and
+--      can correlate hypothetical other leaks.
+--   2. Workers' real UUIDs end up in browser DevTools, network
+--      tabs, etc. — fine for our threat model today but free to fix.
+--
+-- The slug is a 16-char alphanumeric string (62^16 ≈ 4.7e28). Unique
+-- per user. /api/auth/workers will return slug + name + colour; the
+-- credentials provider takes the slug and resolves it to the real
+-- UUID server-side before the bcrypt compare.
+--
+-- Migration is idempotent — column add is `if not exists`, the slug
+-- generator only fills nulls, and the unique index uses `if not
+-- exists` semantics.
+
+create extension if not exists pgcrypto;
+
+alter table public.users
+  add column if not exists public_slug text;
+
+-- Backfill any existing rows with a fresh slug. We do this in pure SQL
+-- so it runs as part of the migration with no app-side script.
+-- substr(replace(...)) trims `gen_random_uuid()`'s dashes and takes the
+-- first 16 hex characters — collision-resistant enough at our scale.
+update public.users
+   set public_slug = substr(replace(gen_random_uuid()::text, '-', ''), 1, 16)
+ where public_slug is null;
+
+-- After backfill the column can be NOT NULL.
+alter table public.users
+  alter column public_slug set not null;
+
+-- Unique partial index in case future rows skip the backfill.
+create unique index if not exists users_public_slug_uniq
+  on public.users (public_slug);
+
+-- New rows: default to a freshly generated slug.
+alter table public.users
+  alter column public_slug set default substr(replace(gen_random_uuid()::text, '-', ''), 1, 16);
+
+-- ────────────────────────────────────────────────────────────
+-- 0018_time_log_per_worker.sql
+-- ────────────────────────────────────────────────────────────
+-- Migrate `jobs.time_log` from a single `{ start, end }` pair to a
+-- per-worker keyed shape: `{ [worker_uuid]: { start, end } }`.
+--
+-- Why: the previous single-pair shape attributed the same hours to
+-- every assigned worker on a multi-worker job. For payroll that
+-- means if Bradley arrives at 9am and Aleisha at 11am to finish a
+-- job that ends at 3pm, both rows in the payroll CSV said 6h
+-- regardless. Real wages, real money, wrong number.
+--
+-- Backfill rule: for every job whose time_log has a top-level `start`
+-- (the legacy shape), copy that single pair across every assigned
+-- worker — this exactly preserves the current payroll output, so
+-- nothing changes for already-completed jobs. Going forward, the
+-- clock-in/out endpoint writes per-worker keys directly.
+--
+-- For jobs with no assigned workers OR no legacy `start`, leave
+-- `time_log` as `{}`.
+--
+-- Idempotent — only triggers on rows that still match the legacy
+-- shape (`time_log ? 'start'`).
+
+update public.jobs
+   set time_log = (
+     select coalesce(
+       jsonb_object_agg(
+         wid::text,
+         jsonb_strip_nulls(jsonb_build_object(
+           'start', time_log->>'start',
+           'end',   time_log->>'end'
+         ))
+       ),
+       '{}'::jsonb
+     )
+     from unnest(assigned_worker_ids) as wid
+   )
+ where time_log ? 'start'
+   and coalesce(array_length(assigned_worker_ids, 1), 0) > 0;
+
+-- Edge case: a legacy row with `time_log = { start, end }` but no
+-- workers (shouldn't happen in real data, but be safe). Reset to {}.
+update public.jobs
+   set time_log = '{}'::jsonb
+ where time_log ? 'start'
+   and coalesce(array_length(assigned_worker_ids, 1), 0) = 0;
