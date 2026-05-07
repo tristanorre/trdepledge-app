@@ -688,6 +688,16 @@ footer {
 .gallery-hero .section-lead.light { color: var(--navy); }
 .gallery-hero .eyebrow { color: var(--navy); }
 .gallery-hero .eyebrow::before { background: var(--navy); }
+
+/* The global `* { margin: 0; padding: 0 }` reset strips list defaults
+   site-wide, which the marketing nav + footer rely on. Restore them
+   inside the privacy page so prose with bullets and paragraphs reads
+   like a normal document. */
+.privacy-section p + p { margin-top: 14px; }
+.privacy-section ul { padding-left: 22px; margin: 12px 0; list-style: disc; }
+.privacy-section li { margin-bottom: 6px; }
+.privacy-section a { color: var(--navy); text-decoration: underline; }
+.privacy-section a:hover { color: #1A4FB5; }
 .gallery-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0; }
 .gallery-item {
   aspect-ratio: 1;

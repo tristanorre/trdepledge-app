@@ -76,6 +76,7 @@ export default function Footer() {
           <div>© {new Date().getFullYear()} T.R. Depledge Gardening & Maintenance · ABN registered 30 November 2020</div>
           <div className="footer-bottom-links">
             <Link href="/contact">Book Online</Link>
+            <Link href="/privacy">Privacy Policy</Link>
           </div>
         </div>
       </div>
