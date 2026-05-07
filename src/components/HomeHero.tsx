@@ -24,12 +24,19 @@ const TOWNS = ["Wallaroo's", "Kadina's", "Moonta's"] as const;
 // walker appears mid-cycle on first paint instead of waiting at the
 // off-screen-left position for its turn — the strip looks alive
 // immediately on page load.
+//
+// `?v=N` cache-bust query: the PNG bytes have been updated in place
+// (background removed) without changing the URL, so existing visitor
+// browsers may still be serving the old white-bg version from cache.
+// Bump the `v` whenever the source files are re-saved with the same
+// filename.
+const V = "2";
 const WALKERS: Array<{ src: string; alt: string; delay: number }> = [
-  { src: "/images/walkers/01-shovel.png",       alt: "Thomas with a shovel",                           delay: 0 },
-  { src: "/images/walkers/02-mower.png",        alt: "Thomas pushing a mower",                         delay: 5.6 },
-  { src: "/images/walkers/03-mower-doug.png",   alt: "Thomas pushing a mower with Doug the galah",     delay: 11.2 },
-  { src: "/images/walkers/04-hedge-doug.png",   alt: "Thomas trimming a hedge while Doug watches",     delay: 16.8 },
-  { src: "/images/walkers/05-blower-doug.png",  alt: "Thomas using a leaf blower with Doug nearby",    delay: 22.4 },
+  { src: `/images/walkers/01-shovel.png?v=${V}`,       alt: "Thomas with a shovel",                           delay: 0 },
+  { src: `/images/walkers/02-mower.png?v=${V}`,        alt: "Thomas pushing a mower",                         delay: 5.6 },
+  { src: `/images/walkers/03-mower-doug.png?v=${V}`,   alt: "Thomas pushing a mower with Doug the galah",     delay: 11.2 },
+  { src: `/images/walkers/04-hedge-doug.png?v=${V}`,   alt: "Thomas trimming a hedge while Doug watches",     delay: 16.8 },
+  { src: `/images/walkers/05-blower-doug.png?v=${V}`,  alt: "Thomas using a leaf blower with Doug nearby",    delay: 22.4 },
 ];
 
 export default function HomeHero() {
