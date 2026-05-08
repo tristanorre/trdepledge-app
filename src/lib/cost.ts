@@ -24,6 +24,11 @@ export type JobMaterialLine = {
 //     hourly rate; no rounding drift).
 //   * A worker who never clocks in contributes nothing — assignment
 //     alone doesn't trigger the first-hour minimum.
+//   * `waiting_time_minutes` (set on the job, shared by the crew) is
+//     added to every clocked-in worker's billable minutes BEFORE the
+//     first-hour-minimum and 15-min-block rules apply. It is recorded
+//     separately for transparency (see `waiting_hours`) but billed as
+//     part of `labour_cents` — no separate `waiting_cents` charge.
 //   * `billed_hours` is the per-worker rounded-up hours summed across
 //     the crew. It's the right Quantity for Xero so that
 //       Quantity × UnitAmount === labour_cents/100
@@ -89,6 +94,7 @@ type EntryBilling = {
 function billingForEntry(
   entry: TimeEntry | undefined,
   rate_cents: number,
+  waiting_minutes: number,
   now: Date,
 ): EntryBilling {
   const empty: EntryBilling = {
@@ -99,22 +105,26 @@ function billingForEntry(
 
   const start = new Date(entry.start).getTime();
   const end = entry.end ? new Date(entry.end).getTime() : now.getTime();
-  const minutes = (end - start) / 60_000;
-  if (!Number.isFinite(minutes) || minutes <= 0) return empty;
+  const onSiteMinutes = (end - start) / 60_000;
+  if (!Number.isFinite(onSiteMinutes) || onSiteMinutes <= 0) return empty;
 
-  const on_site_hours = minutes / 60;
+  // Waiting time on the job is shared by the crew and added to every
+  // clocked-in worker's billable minutes. A worker who didn't clock in
+  // bails out above and never sees waiting time — assignment alone
+  // doesn't trigger billing.
+  const billableMinutes = onSiteMinutes + Math.max(0, waiting_minutes);
 
   // Any part of the first hour → full first-hour minimum.
   const first_hour_cents = rate_cents;
 
   // After the first hour, every 15 minutes (rounded UP) at rate/4.
-  const overtime_blocks = minutes <= 60 ? 0 : Math.ceil((minutes - 60) / 15);
+  const overtime_blocks = billableMinutes <= 60 ? 0 : Math.ceil((billableMinutes - 60) / 15);
   // Multiply first to keep precision, round once. With rate=5698,
   // 4 blocks × 5698 / 4 = 5698 exactly — no drift across a full hour.
   const overtime_cents = Math.round((overtime_blocks * rate_cents) / 4);
 
   return {
-    on_site_hours,
+    on_site_hours: onSiteMinutes / 60,
     billed_hours: 1 + overtime_blocks * 0.25,
     first_hour_cents,
     overtime_blocks,
@@ -132,9 +142,13 @@ export function calculateCost(
   const worker_count = Math.max(1, job.assigned_worker_ids.length);
 
   const time_log = (job.time_log ?? {}) as TimeLog;
-  const waiting_hours = (job.waiting_time_minutes ?? 0) / 60;
+  const waiting_minutes = Math.max(0, job.waiting_time_minutes ?? 0);
+  const waiting_hours = waiting_minutes / 60;
 
-  // Per-worker billing — only workers who've started count.
+  // Per-worker billing — only workers who've started count. Waiting
+  // time is added to each started worker's billable minutes, so it's
+  // already inside `labour_cents` and there's no separate
+  // `waiting_cents` charge.
   let workers_billed = 0;
   let hours = 0;             // actual on-site total
   let billed_hours = 0;
@@ -143,7 +157,7 @@ export function calculateCost(
   let overtime_cents = 0;
 
   for (const entry of Object.values(time_log)) {
-    const b = billingForEntry(entry, rate_cents, now);
+    const b = billingForEntry(entry, rate_cents, waiting_minutes, now);
     if (b.first_hour_cents > 0) workers_billed += 1;
     hours            += b.on_site_hours;
     billed_hours     += b.billed_hours;
@@ -153,10 +167,10 @@ export function calculateCost(
   }
 
   const labour_cents = first_hour_cents + overtime_cents;
-
-  // Waiting time policy: per-worker (the crew waits together), unchanged
-  // by the new labour-billing rule.
-  const waiting_cents = Math.round(waiting_hours * rate_cents * worker_count);
+  // Waiting is now folded into labour above; the dedicated
+  // `waiting_cents` field stays at 0 so existing rollups don't
+  // double-count.
+  const waiting_cents = 0;
 
   const material_lines = materials.map((m) => {
     const base = m.base_price_cents * m.qty;

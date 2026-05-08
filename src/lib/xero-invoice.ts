@@ -188,19 +188,10 @@ function buildLineItems(
     items.push(labourLine);
   }
 
-  // ── Waiting time. Per spec it's billed the same hourly rate.
-  if (cost.waiting_cents > 0) {
-    const rateDollars = cost.rate_cents / 100;
-    const waitingHoursPerWorker = cost.waiting_hours * cost.worker_count;
-    const waitingLine: Record<string, unknown> = {
-      Description: "Waiting time (billable, on site)",
-      Quantity: round3(waitingHoursPerWorker),
-      UnitAmount: round2(rateDollars),
-      AccountCode: salesAccount(),
-    };
-    if (isNdis) waitingLine.ItemCode = NDIS_SUPPORT_ITEM;
-    items.push(waitingLine);
-  }
+  // Note: there is no separate waiting-time line. Waiting minutes are
+  // added to each worker's billable on-site time inside
+  // calculateCost() and so are already inside the labour Quantity
+  // above. cost.waiting_cents is 0 by construction.
 
   // ── Materials, one line per catalogue item with markup.
   for (const m of cost.material_lines) {

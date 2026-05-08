@@ -44,13 +44,19 @@ export default function CostBreakdown({ cost, isComplete }: Props) {
              indent />
       )}
       <Row label="Labour subtotal"
-           detail={`${fmtHours(cost.hours)} on site${!isComplete && cost.hours > 0 ? " (so far)" : ""} · billed ${fmtHours(cost.billed_hours)}`}
+           detail={`${fmtHours(cost.hours)} on site${!isComplete && cost.hours > 0 ? " (so far)" : ""}${cost.waiting_hours > 0 ? ` + ${fmtHours(cost.waiting_hours)} waiting (per worker)` : ""} · billed ${fmtHours(cost.billed_hours)}`}
            amount={fmtMoney(cost.labour_cents)}
            bold />
 
-      <Row label="Waiting time"
-           detail={fmtHours(cost.waiting_hours)}
-           amount={fmtMoney(cost.waiting_cents)} />
+      {/* Waiting time is now folded into labour (it adds to each
+          clocked-in worker's billable minutes). Show it for
+          transparency, but no separate dollar charge. */}
+      {cost.waiting_hours > 0 && (
+        <Row label="Waiting time"
+             detail={`${fmtHours(cost.waiting_hours)} recorded · billed as part of labour`}
+             amount={null}
+             indent />
+      )}
 
       {cost.material_lines.length === 0 ? (
         <Row label="Materials" detail="No lines added" amount={fmtMoney(0)} />
