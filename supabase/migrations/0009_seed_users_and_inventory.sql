@@ -26,11 +26,33 @@ values (
 )
 on conflict (email) do nothing;
 
-insert into public.users (name, role, pin_hash, colour, active) values
-  ('Bradley Depledge',     'worker', crypt('1234', gen_salt('bf', 10)), '#1A4FB5', true),
-  ('Aleisha Bussenschutt', 'worker', crypt('1234', gen_salt('bf', 10)), '#FFE500', true),
-  ('Darrell Woods',        'worker', crypt('1234', gen_salt('bf', 10)), '#7AAB0F', true),
-  ('Dave Kay',             'worker', crypt('1234', gen_salt('bf', 10)), '#DC2626', true);
+-- Workers don't have an email unique constraint, so an earlier version of
+-- this file (no `where not exists` guard) would insert a fresh row on every
+-- re-run, leaving duplicate rows like
+--   Bradley Depledge / 1234 / <new uuid>   × N
+-- which then breaks the asset-assignment scalar subqueries below
+-- ("more than one row returned by a subquery used as an expression").
+-- Dedupe first — keep the oldest row per (name, role) — then guard the
+-- insert so re-runs are no-ops.
+delete from public.users a
+ using public.users b
+ where a.role = 'worker'
+   and b.role = 'worker'
+   and a.name = b.name
+   and a.id   <> b.id
+   and a.created_at > b.created_at;
+
+insert into public.users (name, role, pin_hash, colour, active)
+select v.name, 'worker', crypt('1234', gen_salt('bf', 10)), v.colour, true
+  from (values
+    ('Bradley Depledge',     '#1A4FB5'),
+    ('Aleisha Bussenschutt', '#FFE500'),
+    ('Darrell Woods',        '#7AAB0F'),
+    ('Dave Kay',             '#DC2626')
+  ) as v(name, colour)
+ where not exists (
+   select 1 from public.users u where u.name = v.name and u.role = 'worker'
+ );
 
 -- Initial leave balances for the four pre-seeded workers, current year.
 insert into public.leave_balances (worker_id, year)
@@ -80,16 +102,18 @@ insert into public.assets (name, identifier, category, icon, condition, notes) v
   ('Wheelbarrow #1', 'WB #001',    'Hand Tools', '🛒', 'Good', null),
   ('Wheelbarrow #2', 'WB #002',    'Hand Tools', '🛒', 'Good', null);
 
--- Safety & PPE — one kit per worker, assigned by name.
+-- Safety & PPE — one kit per worker, assigned by name. `limit 1` guards
+-- the lookup against any stray duplicate user row (the dedup step above
+-- handles the known case, but `limit 1` is cheap belt-and-braces).
 insert into public.assets (name, identifier, category, icon, condition, assigned_to) values
   ('Safety Kit — Bradley Depledge',     null, 'Safety & PPE', '🦺', 'Good',
-   (select id from public.users where name = 'Bradley Depledge')),
+   (select id from public.users where name = 'Bradley Depledge'     and role = 'worker' limit 1)),
   ('Safety Kit — Aleisha Bussenschutt', null, 'Safety & PPE', '🦺', 'Good',
-   (select id from public.users where name = 'Aleisha Bussenschutt')),
+   (select id from public.users where name = 'Aleisha Bussenschutt' and role = 'worker' limit 1)),
   ('Safety Kit — Darrell Woods',        null, 'Safety & PPE', '🦺', 'Good',
-   (select id from public.users where name = 'Darrell Woods')),
+   (select id from public.users where name = 'Darrell Woods'        and role = 'worker' limit 1)),
   ('Safety Kit — Dave Kay',             null, 'Safety & PPE', '🦺', 'Good',
-   (select id from public.users where name = 'Dave Kay'));
+   (select id from public.users where name = 'Dave Kay'             and role = 'worker' limit 1));
 
 insert into public.assets (name, identifier, category, icon, condition, notes) values
   ('First Aid Kit', 'FAK #001', 'Safety & PPE', '⛑️', 'Good', 'Expires June 2026');
