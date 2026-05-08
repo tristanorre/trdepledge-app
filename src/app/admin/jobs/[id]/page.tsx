@@ -11,6 +11,7 @@ import JobPhotosSection from "@/components/JobPhotosSection";
 import JobSmsPanel from "@/components/JobSmsPanel";
 import SendToXeroButton from "@/components/SendToXeroButton";
 import ReopenJobButton from "@/components/ReopenJobButton";
+import TimeLogEditor from "@/components/TimeLogEditor";
 import type { Job, WorkerListEntry } from "@/lib/types";
 import type { JobMaterialLine } from "@/lib/cost";
 import { calculateCost } from "@/lib/cost";
@@ -161,6 +162,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
       <div style={{ ...cardStyle, marginTop: 20 }}>
         <MaterialsList jobId={j.id} initialLines={materials} />
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 20 }}>
+        <TimeLogEditor
+          jobId={j.id}
+          workers={assignedWorkers}
+          initialTimeLog={(j.time_log ?? {}) as Record<string, { start?: string; end?: string }>}
+        />
       </div>
 
       <div style={{ ...cardStyle, marginTop: 20 }}>
