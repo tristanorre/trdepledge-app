@@ -25,12 +25,28 @@ export default function CostBreakdown({ cost, isComplete }: Props) {
       )}
 
       <Row label="Rate"
-           detail={`${fmtMoney(cost.rate_cents)}/hr · ${cost.worker_count} worker${cost.worker_count === 1 ? "" : "s"}`}
+           detail={`${fmtMoney(cost.rate_cents)}/hr · ${fmtMoney(Math.round(cost.rate_cents / 4))} per 15-min block · ${cost.worker_count} worker${cost.worker_count === 1 ? "" : "s"} assigned`}
            amount={null} />
 
-      <Row label="Labour"
-           detail={`${fmtHours(cost.hours)} on site${!isComplete && cost.hours > 0 ? " (so far)" : ""}`}
-           amount={fmtMoney(cost.labour_cents)} />
+      {/* Split the labour total so Thomas can see the first-hour
+          minimum and any 15-min overtime separately. The "Labour
+          subtotal" row shows the sum that hits the invoice. */}
+      {cost.first_hour_cents > 0 && (
+        <Row label="First hour minimum"
+             detail={`${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"} on site · 1h × ${fmtMoney(cost.rate_cents)}`}
+             amount={fmtMoney(cost.first_hour_cents)}
+             indent />
+      )}
+      {cost.overtime_blocks > 0 && (
+        <Row label="Overtime"
+             detail={`${cost.overtime_blocks} × 15-min block${cost.overtime_blocks === 1 ? "" : "s"} × ${fmtMoney(Math.round(cost.rate_cents / 4))}`}
+             amount={fmtMoney(cost.overtime_cents)}
+             indent />
+      )}
+      <Row label="Labour subtotal"
+           detail={`${fmtHours(cost.hours)} on site${!isComplete && cost.hours > 0 ? " (so far)" : ""} · billed ${fmtHours(cost.billed_hours)}`}
+           amount={fmtMoney(cost.labour_cents)}
+           bold />
 
       <Row label="Waiting time"
            detail={fmtHours(cost.waiting_hours)}

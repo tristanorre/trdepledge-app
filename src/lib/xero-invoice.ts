@@ -169,16 +169,18 @@ function buildLineItems(
   const isNdis: boolean = job.client_type === "NDIS";
   const isAged: boolean = (job.client_type as ClientType) === "Aged Care";
 
-  // ── Labour. We bill per-worker-hour at the configured rate. Xero
-  // expects Quantity (decimal) and UnitAmount (decimal dollars).
+  // ── Labour. Quantity is `billed_hours` — the per-worker rounded-up
+  // total under the first-hour-minimum + 15-min-block rule (see
+  // src/lib/cost.ts). Multiplied by the hourly UnitAmount this equals
+  // labour_cents/100 exactly, so the Xero line total agrees with the
+  // breakdown shown to Thomas.
   if (cost.labour_cents > 0) {
     const rateDollars = cost.rate_cents / 100;
-    const totalWorkerHours = cost.hours * cost.worker_count;
     const labourLine: Record<string, unknown> = {
       Description: isNdis
-        ? `${job.client_type} support — labour (${cost.worker_count} worker${cost.worker_count === 1 ? "" : "s"})`
-        : `Garden / yard work — labour (${cost.worker_count} worker${cost.worker_count === 1 ? "" : "s"})`,
-      Quantity: round3(totalWorkerHours),
+        ? `${job.client_type} support — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, 1h min + 15-min blocks)`
+        : `Garden / yard work — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, 1h min + 15-min blocks)`,
+      Quantity: round3(cost.billed_hours),
       UnitAmount: round2(rateDollars),
       AccountCode: salesAccount(),
     };
