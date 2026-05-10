@@ -132,18 +132,9 @@ export default function HomeHero() {
       </div>
 
       <div className="v16-hero-right">
-        {/* Cartoon illustration on transparent background — chosen
-            over the AI-photoreal `hero-thomas-doug.png` so the hero
-            matches the rest of the brand assets, removes the wrong
-            phone number that was baked into the photo's shirt, and
-            drops the duplicate "TR DEPLEDGE" sign that was competing
-            with the headline + nav logo. The walker PNGs are also
-            ~75% smaller after compression, helping LCP.
-
-            ?v=3 cache-bust — bytes were re-encoded in place. */}
         <Image
-          src="/images/walkers/04-hedge-doug.png?v=3"
-          alt="Thomas trimming a hedge with Doug the galah watching"
+          src="/images/hero-thomas-doug.png"
+          alt="Thomas Depledge with Doug the galah"
           className="v16-hero-image"
           width={900}
           height={1100}
