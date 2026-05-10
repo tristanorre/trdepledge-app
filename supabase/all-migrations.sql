@@ -1,6 +1,6 @@
 -- ============================================================
 -- T.R. Depledge — full schema, paste this into Supabase SQL editor.
--- Generated 2026-05-10T11:52:04Z by scripts/build-all-migrations.sh
+-- Generated 2026-05-10T12:22:36Z by scripts/build-all-migrations.sh
 -- Idempotent: safe to re-run on a fresh project.
 -- ============================================================
 
@@ -756,6 +756,18 @@ create index if not exists users_reset_token_idx
 --
 -- Limits match the application caps in src/app/api/enquiries/route.ts.
 -- If you change them, change both — they're not auto-generated.
+
+-- Idempotent: drop-and-recreate so the bundle can be re-run without
+-- failing on "constraint already exists" (Postgres doesn't support
+-- ADD CONSTRAINT IF NOT EXISTS for check constraints).
+alter table public.enquiries drop constraint if exists enquiries_first_name_len;
+alter table public.enquiries drop constraint if exists enquiries_last_name_len;
+alter table public.enquiries drop constraint if exists enquiries_email_len;
+alter table public.enquiries drop constraint if exists enquiries_phone_len;
+alter table public.enquiries drop constraint if exists enquiries_suburb_len;
+alter table public.enquiries drop constraint if exists enquiries_service_type_len;
+alter table public.enquiries drop constraint if exists enquiries_client_type_len;
+alter table public.enquiries drop constraint if exists enquiries_message_len;
 
 alter table public.enquiries
   add constraint enquiries_first_name_len    check (char_length(first_name)   <= 80),
