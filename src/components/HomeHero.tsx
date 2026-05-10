@@ -142,8 +142,8 @@ export default function HomeHero() {
 
             ?v=3 cache-bust — bytes were re-encoded in place. */}
         <Image
-          src="/images/walkers/03-mower-doug.png?v=3"
-          alt="Thomas pushing a mower with Doug the galah on his shoulder"
+          src="/images/walkers/04-hedge-doug.png?v=3"
+          alt="Thomas trimming a hedge with Doug the galah watching"
           className="v16-hero-image"
           width={900}
           height={1100}
