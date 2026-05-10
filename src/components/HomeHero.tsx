@@ -132,35 +132,19 @@ export default function HomeHero() {
       </div>
 
       <div className="v16-hero-right">
+        {/* The poster is a self-contained composition — its own
+            headline ("Gardens that impress / Maintenance you can
+            trust"), brand mark, service icons and tagline. Speech
+            bubble and the Thomas/30+ overlays were removed because
+            they'd crowd the poster's existing layout. */}
         <Image
-          src="/images/hero-thomas-doug.png"
-          alt="Thomas Depledge with Doug the galah"
+          src="/images/hero-tr-poster.png"
+          alt="T.R. Depledge Gardening & Maintenance — Thomas with Doug the galah, gardens that impress, maintenance you can trust"
           className="v16-hero-image"
-          width={900}
-          height={1100}
+          width={1122}
+          height={1402}
           priority
         />
-
-        <div className="v16-doug-bubble" aria-hidden="true">
-          <div className="v16-doug-bubble-text">G&apos;day! I&apos;m Doug —<br />Thomas does the<br />gardening, I supervise.</div>
-          <div className="v16-doug-bubble-from">— Doug the galah</div>
-        </div>
-
-        <div className="v16-right-stack" aria-hidden="true">
-          <div className="v16-sig-card">
-            <div className="v16-sig-name">Thomas Depledge</div>
-            <div className="v16-sig-role">Owner · Wallaroo SA</div>
-          </div>
-          <div className="v16-stat-ribbon">
-            <span className="v16-stat-leaf">
-              <svg viewBox="0 0 24 24"><path d="M17 8C8 10 5.9 16.17 3.82 21.34l1.89.66.95-2.3c.48.17.98.3 1.34.3 7 0 12-7 12-12 0-1.31-.21-2.55-.58-3.7C19.65 5.85 19 7 17 8z" /></svg>
-            </span>
-            <div>
-              <div className="v16-stat-num">30+</div>
-              <div className="v16-stat-label">Regular clients</div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Walker strip — row 2 of the hero grid. Each <img> carries the
