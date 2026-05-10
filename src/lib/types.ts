@@ -65,6 +65,18 @@ export type WorkerListEntry = {
   colour: string;
 };
 
+// Row in the materials_catalogue table, shaped for the /admin/materials
+// management UI and the per-job materials picker.
+export type MaterialCatalogueRow = {
+  id: string;
+  name: string;
+  unit: string;
+  base_price_cents: number;
+  category: string | null;
+  active: boolean;
+  quantity_on_hand: number;     // numeric stock tracker (added by migration 0020)
+};
+
 export type EnquiryStatus = "new" | "contacted" | "converted" | "closed";
 
 export type Enquiry = {

@@ -60,6 +60,31 @@ export async function PATCH(req: Request, { params }: Ctx) {
     const v = String(body.ndis_funding_type ?? "");
     patch.ndis_funding_type = ["self", "plan", "agency"].includes(v) ? v : null;
   }
+  // Recurring-service fields (migration 0020).
+  if ("service_frequency_days" in body) {
+    const raw = body.service_frequency_days;
+    if (raw == null || raw === "") {
+      patch.service_frequency_days = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        return NextResponse.json({ error: "service_frequency_days must be a positive integer" }, { status: 400 });
+      }
+      patch.service_frequency_days = n;
+    }
+  }
+  if ("next_service_due" in body) {
+    const raw = body.next_service_due;
+    if (raw == null || raw === "") {
+      patch.next_service_due = null;
+    } else {
+      const s = String(raw);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        return NextResponse.json({ error: "next_service_due must be ISO YYYY-MM-DD" }, { status: 400 });
+      }
+      patch.next_service_due = s;
+    }
+  }
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }

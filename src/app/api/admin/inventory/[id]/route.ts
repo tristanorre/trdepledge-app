@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { writeAuditEntry } from "@/lib/audit";
+import { ASSET_IMAGES_BUCKET } from "@/lib/storage";
 import {
   ASSET_CONDITIONS,
   type Asset, type AssetCondition,
@@ -148,4 +150,64 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   await Promise.all(tasks);
 
   return NextResponse.json({ asset: after });
+}
+
+// DELETE — remove an asset entirely. Removes the uploaded image from
+// storage too if there is one. The DB row goes away; the audit log
+// keeps its history because audit_log is append-only and never refers
+// to assets via FK (only by `item_id` text).
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const auth = await requireApiAdmin();
+  if (auth instanceof NextResponse) return auth;
+  const { session } = auth;
+
+  const supabase = requireSupabase();
+  if (supabase instanceof NextResponse) return supabase;
+
+  const { data: before, error: readErr } = await supabase
+    .from("assets")
+    .select("*")
+    .eq("id", params.id)
+    .maybeSingle();
+
+  if (readErr) {
+    console.error("[admin/inventory/:id DELETE] read", readErr);
+    return NextResponse.json({ error: "Could not load asset" }, { status: 500 });
+  }
+  if (!before) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const asset = before as Asset;
+
+  // Delete the DB row first, then best-effort drop the image. If
+  // image removal fails we just leave the blob — caller still sees
+  // the asset gone from the list.
+  const { error: delErr } = await supabase
+    .from("assets")
+    .delete()
+    .eq("id", params.id);
+
+  if (delErr) {
+    console.error("[admin/inventory/:id DELETE]", delErr);
+    return NextResponse.json({ error: "Could not delete asset" }, { status: 500 });
+  }
+
+  if (asset.image_path) {
+    await supabase.storage.from(ASSET_IMAGES_BUCKET).remove([asset.image_path]).catch(() => null);
+  }
+
+  // Audit log entry — uses the existing `asset.returned` action since
+  // there's no `asset.deleted` in the AUDIT_ACTIONS vocabulary and we
+  // don't want to expand it for a one-off without a UI colour map
+  // update. The note disambiguates.
+  await writeAuditEntry(supabase, {
+    action: "asset.returned",
+    item_id: asset.id,
+    item_name: asset.name,
+    from_worker_id: asset.assigned_to,
+    to_worker_id: null,
+    performed_by: session.user.id,
+    note: "Deleted from inventory",
+  });
+
+  revalidatePath("/admin/inventory");
+  return NextResponse.json({ ok: true });
 }

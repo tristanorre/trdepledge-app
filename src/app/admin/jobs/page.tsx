@@ -46,8 +46,10 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
 
     const [{ data: js, error }, { data: ws }] = await Promise.all([
       q,
+      // Admins included so Thomas appears in the worker filter dropdown
+      // alongside the field crew.
       supabase.from("users").select("id, name, colour")
-        .eq("role", "worker").eq("active", true).order("name"),
+        .in("role", ["worker", "admin"]).eq("active", true).order("name"),
     ]);
     if (error) console.error("[admin/jobs page]", error);
     jobs = (js ?? []) as Job[];

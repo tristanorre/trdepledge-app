@@ -14,7 +14,8 @@ export default async function EditJobPage({ params }: { params: { id: string } }
 
   const [{ data: jobData }, { data: workersData }] = await Promise.all([
     supabase.from("jobs").select("*").eq("id", params.id).maybeSingle(),
-    supabase.from("users").select("id, name, colour").eq("role", "worker").eq("active", true).order("name"),
+    // Include admins so Thomas appears in the assignment dropdown.
+    supabase.from("users").select("id, name, colour").in("role", ["worker", "admin"]).eq("active", true).order("name"),
   ]);
 
   if (!jobData) notFound();

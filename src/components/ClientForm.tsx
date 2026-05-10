@@ -21,6 +21,12 @@ type ClientShape = {
   plan_manager_phone: string | null;
   ndis_funding_type: FundingType | null;
   notes: string | null;
+  // Service-frequency tracking (added in 0020). `service_frequency_days`
+  // = the recurrence interval in days (7 = weekly, 14 = fortnightly,
+  // 28 = monthly approx). `next_service_due` is the date the next job
+  // is expected — typed as ISO YYYY-MM-DD in the API.
+  service_frequency_days: number | null;
+  next_service_due: string | null;
 };
 
 type Props = {
@@ -49,6 +55,8 @@ export default function ClientForm({ initial = {}, submitUrl, submitMethod, show
     plan_manager_phone: initial.plan_manager_phone ?? null,
     ndis_funding_type: (initial.ndis_funding_type as FundingType) ?? null,
     notes: initial.notes ?? null,
+    service_frequency_days: initial.service_frequency_days ?? null,
+    next_service_due: initial.next_service_due ?? null,
   });
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -190,6 +198,48 @@ export default function ClientForm({ initial = {}, submitUrl, submitMethod, show
           </div>
         </Card>
       )}
+
+      <Card title="Recurring service">
+        <p style={{ fontSize: 13, color: "var(--gray)", marginTop: 0, marginBottom: 12 }}>
+          If this client is on a recurring schedule (weekly, fortnightly, monthly), set the
+          interval here. The Schedule and Dashboard views will flag them when the next
+          service is due so they get rostered automatically.
+        </p>
+        <div className="form-row">
+          <div className="form-group">
+            <label className="form-label" htmlFor="freq">Frequency</label>
+            <select
+              id="freq"
+              className="form-select"
+              value={s.service_frequency_days ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                set("service_frequency_days", v === "" ? null : Number(v));
+              }}
+            >
+              <option value="">One-off / no schedule</option>
+              <option value="7">Weekly</option>
+              <option value="14">Fortnightly</option>
+              <option value="21">Every 3 weeks</option>
+              <option value="28">Every 4 weeks (monthly)</option>
+              <option value="42">Every 6 weeks</option>
+              <option value="56">Every 8 weeks</option>
+              <option value="84">Quarterly (12 weeks)</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label className="form-label" htmlFor="due">Next service due</label>
+            <input
+              id="due"
+              type="date"
+              className="form-input"
+              value={s.next_service_due ?? ""}
+              onChange={(e) => setStr("next_service_due", e.target.value)}
+              disabled={s.service_frequency_days == null}
+            />
+          </div>
+        </div>
+      </Card>
 
       <Card title="Notes">
         <div className="form-group" style={{ marginBottom: 0 }}>

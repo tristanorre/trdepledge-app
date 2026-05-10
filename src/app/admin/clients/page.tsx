@@ -12,6 +12,8 @@ type Client = {
   suburb: string | null;
   phone: string | null;
   email: string | null;
+  service_frequency_days: number | null;
+  next_service_due: string | null;
 };
 
 const TYPE_OPTIONS = ["", "Private", "NDIS", "Aged Care", "Commercial"];
@@ -30,7 +32,7 @@ export default async function AdminClientsPage({
   if (supabase) {
     let query = supabase
       .from("clients")
-      .select("id, name, type, suburb, phone, email")
+      .select("id, name, type, suburb, phone, email, service_frequency_days, next_service_due")
       .order("name")
       .limit(500);
     if (searchParams.type) query = query.eq("type", searchParams.type);
@@ -77,25 +79,67 @@ export default async function AdminClientsPage({
         </div>
       ) : (
         <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 10 }}>
-          {clients.map((c) => (
-            <li key={c.id}>
-              <Link href={`/admin/clients/${c.id}`} style={rowStyle}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, color: "var(--navy)", fontSize: 15 }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 2 }}>
-                    {c.suburb ?? "—"}
-                    {c.phone && <> · {c.phone}</>}
-                    {!c.phone && c.email && <> · {c.email}</>}
+          {clients.map((c) => {
+            // Service-due flag: "overdue" if next_service_due is in
+            // the past or today, "due soon" if within the next 3
+            // days. Recurring clients without a due date show a
+            // generic recurrence pill (Thomas hasn't set the next
+            // date yet — UI nudges him to).
+            const dueFlag = serviceDueFlag(c.next_service_due);
+            const isRecurring = c.service_frequency_days != null;
+            return (
+              <li key={c.id}>
+                <Link href={`/admin/clients/${c.id}`} style={rowStyle}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, color: "var(--navy)", fontSize: 15 }}>{c.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 2 }}>
+                      {c.suburb ?? "—"}
+                      {c.phone && <> · {c.phone}</>}
+                      {!c.phone && c.email && <> · {c.email}</>}
+                      {isRecurring && (
+                        <> · every {c.service_frequency_days} day{c.service_frequency_days === 1 ? "" : "s"}</>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <span style={typeBadge(c.type)}>{c.type}</span>
-              </Link>
-            </li>
-          ))}
+                  {dueFlag && <span style={dueBadge(dueFlag.kind)}>{dueFlag.label}</span>}
+                  <span style={typeBadge(c.type)}>{c.type}</span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
+}
+
+// Compute the service-due pill for a client, based on next_service_due
+// vs today. Returns null when there's no due date set, or it's far in
+// the future. The pill nudges Thomas to roster recurring clients.
+function serviceDueFlag(nextDue: string | null): { kind: "overdue" | "due-soon"; label: string } | null {
+  if (!nextDue) return null;
+  // Compare dates only (no time). Both treated as local-midnight.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${nextDue}T00:00:00`);
+  if (!Number.isFinite(due.getTime())) return null;
+  const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { kind: "overdue", label: `${-diffDays}d overdue` };
+  if (diffDays === 0) return { kind: "overdue", label: "Due today" };
+  if (diffDays <= 3)  return { kind: "due-soon", label: `Due in ${diffDays}d` };
+  return null;
+}
+
+function dueBadge(kind: "overdue" | "due-soon"): React.CSSProperties {
+  const palette = kind === "overdue"
+    ? { bg: "rgba(220,38,38,0.14)", fg: "#B91C1C" }
+    : { bg: "rgba(255,193,7,0.16)", fg: "#856404" };
+  return {
+    background: palette.bg, color: palette.fg,
+    fontSize: 10, fontWeight: 800, letterSpacing: "0.5px",
+    textTransform: "uppercase", padding: "4px 10px", borderRadius: 999,
+    whiteSpace: "nowrap",
+  };
 }
 
 function typeBadge(t: Client["type"]): React.CSSProperties {

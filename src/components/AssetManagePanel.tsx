@@ -146,6 +146,37 @@ export default function AssetManagePanel({ asset, workers }: Props) {
         )}
       </Card>
 
+      {/* Destructive: delete the asset entirely. Confirms once,
+          drops the row + its uploaded image, then bounces back to
+          the inventory list. The audit log keeps a record. */}
+      <Card title="Danger zone">
+        <p style={hintStyle}>
+          Removes this asset and its uploaded image. The audit log keeps a record of the deletion.
+        </p>
+        <button
+          type="button"
+          onClick={async () => {
+            if (!confirm(`Delete "${asset.name}" from inventory? This can't be undone.`)) return;
+            setBusy("delete");
+            setError(null);
+            try {
+              const res = await fetch(`/api/admin/inventory/${asset.id}`, { method: "DELETE" });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error ?? "Could not delete");
+              router.push("/admin/inventory");
+              router.refresh();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Could not delete");
+              setBusy(null);
+            }
+          }}
+          disabled={busy !== null}
+          style={dangerBtn}
+        >
+          {busy === "delete" ? "Deleting…" : "Delete this asset"}
+        </button>
+      </Card>
+
       {error && <div className="form-error" role="alert">⚠ {error}</div>}
     </div>
   );
@@ -185,4 +216,10 @@ const cancelBtn: React.CSSProperties = {
   background: "transparent", color: "var(--gray)",
   border: "none", padding: "10px 16px", fontSize: 13,
   cursor: "pointer", minHeight: 40,
+};
+const dangerBtn: React.CSSProperties = {
+  background: "#FEE2E2", color: "#B91C1C",
+  border: "1px solid #FCA5A5", borderRadius: 8,
+  padding: "10px 16px", fontSize: 14, fontWeight: 700,
+  cursor: "pointer", minHeight: 40, marginTop: 8,
 };

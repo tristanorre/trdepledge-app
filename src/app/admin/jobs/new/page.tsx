@@ -22,7 +22,10 @@ export default async function NewJobPage({
     const { data } = await supabase
       .from("users")
       .select("id, name, colour")
-      .eq("role", "worker")
+      // Include admins too so Thomas can self-assign to a job. Other
+      // worker-driven views (HR, payroll, roster, /worker login) keep
+      // their stricter role='worker' filter.
+      .in("role", ["worker", "admin"])
       .eq("active", true)
       .order("name");
     workers = (data ?? []) as WorkerListEntry[];

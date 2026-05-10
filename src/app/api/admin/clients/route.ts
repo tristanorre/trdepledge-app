@@ -61,6 +61,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "type must be Private | NDIS | Aged Care | Commercial" }, { status: 400 });
   }
 
+  // Recurring-service fields (migration 0020). Frequency stays null
+  // for one-off clients; the date is only meaningful when paired with
+  // a frequency. The DB check constraint enforces frequency > 0.
+  const freqRaw = Number(body.service_frequency_days);
+  const service_frequency_days =
+    Number.isFinite(freqRaw) && Number.isInteger(freqRaw) && freqRaw > 0 ? freqRaw : null;
+  const dueRaw = body.next_service_due ? String(body.next_service_due) : "";
+  const next_service_due = /^\d{4}-\d{2}-\d{2}$/.test(dueRaw) ? dueRaw : null;
+
   const insert = {
     name,
     type,
@@ -77,6 +86,8 @@ export async function POST(req: Request) {
       ? body.ndis_funding_type
       : null,
     notes: body.notes ? String(body.notes).trim() : null,
+    service_frequency_days,
+    next_service_due,
   };
 
   const { data, error } = await supabase

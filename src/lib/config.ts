@@ -12,9 +12,9 @@ export type Rates = {
 };
 
 const DEFAULTS: Rates = {
-  Private: 6000,
-  NDIS: 5698,
-  "Aged Care": 5698,
+  Private: 5500,     // $55.00 inc-GST per hour
+  NDIS: 5698,        // $56.98 (NDIS price-guide unit rate)
+  "Aged Care": 5698, // same as NDIS
 };
 
 export async function getRates(supabase: SupabaseClient | null): Promise<Rates> {
