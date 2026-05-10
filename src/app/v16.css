@@ -182,9 +182,15 @@ main { padding-top: 0; }
 }
 
 .v16-hero-left {
+  /* Left padding clears the 240px-wide logo slot that overhangs
+     down out of the nav bar into the hero (the v16 "logo bursts
+     down" anchor). Without the wider gutter the eyebrow rotator
+     ("Wallaroo's Trusted") was rendering behind the bottom of the
+     logo image. The mobile breakpoint at max-width:960px overrides
+     this back to 24px because the logo shrinks there. */
   grid-column: 1;
   grid-row: 1;
-  padding: 96px 56px 32px 56px;
+  padding: 96px 56px 32px 280px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -343,15 +349,11 @@ main { padding-top: 0; }
 /* ── HERO RIGHT (PHOTO + OVERLAYS) ───────────────────────────────── */
 
 .v16-hero-right {
-  /* Spans both grid rows so the poster sits in a centred area that
-     extends down through the walker strip's vertical zone. z-index
-     above the walker strip keeps any walkers that drift into the
-     right column visually behind the figure.
-
-     Right padding mirrors the 56px left padding used in
-     .v16-hero-left so the poster has the same edge-clearance as the
-     headline/CTAs on the other side, instead of running flush to
-     the viewport edge. */
+  /* Spans both grid rows so the poster fills the right half of the
+     hero area top-to-bottom. z-index keeps any walkers that drift
+     into this column visually behind the figure. Slim padding so
+     the poster genuinely fills the column rather than floating with
+     a wide gutter. */
   grid-column: 2;
   grid-row: 1 / 3;
   position: relative;
@@ -359,23 +361,18 @@ main { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 56px 32px 24px;
+  padding: 16px 16px 0 16px;
 }
 .v16-hero-image {
-  /* The poster is intentionally constrained: capping max-width and
-     max-height stops it from inflating on wide viewports (where 50%
-     of the screen would balloon the artwork), and `height: auto`
-     keeps the 1122×1402 aspect ratio intact so neither dimension
-     gets distorted. The smaller of the two caps wins:
-       width  cap → height = 480 / 0.8 = 600
-       height cap → width  = 600 × 0.8 = 480
-     which means at standard viewports the poster lands at 480×600. */
+  /* Fill the column while preserving the 1122×1402 aspect ratio.
+     `contain` so the bottom service icons + tagline aren't cropped;
+     on wide screens this letterboxes a bit horizontally, on tall
+     screens vertically, but the artwork stays intact. */
   display: block;
   width: 100%;
-  max-width: 480px;
-  height: auto;
-  max-height: 600px;
+  height: 100%;
   object-fit: contain;
+  object-position: center;
 }
 
 .v16-doug-bubble {
