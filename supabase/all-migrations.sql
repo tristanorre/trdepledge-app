@@ -1,6 +1,6 @@
 -- ============================================================
 -- T.R. Depledge — full schema, paste this into Supabase SQL editor.
--- Generated 2026-05-08T00:46:16Z by scripts/build-all-migrations.sh
+-- Generated 2026-05-10T11:52:04Z by scripts/build-all-migrations.sh
 -- Idempotent: safe to re-run on a fresh project.
 -- ============================================================
 
@@ -1080,3 +1080,28 @@ update public.jobs
    set time_log = '{}'::jsonb
  where time_log ? 'start'
    and coalesce(array_length(assigned_worker_ids, 1), 0) = 0;
+
+-- ────────────────────────────────────────────────────────────
+-- 0019_asset_images.sql
+-- ────────────────────────────────────────────────────────────
+-- Inventory: optional uploaded image per asset.
+--
+-- Why: Thomas wants real photos of mowers, vehicles, etc. instead of
+-- (or alongside) the emoji icon. Path lives in storage; the DB just
+-- stores the storage key.
+--
+-- Path convention: assets/<asset-id>/<timestamp>.<ext>
+--
+-- The `asset-images` storage bucket is **private** — same pattern as
+-- `job-photos`. Clients never fetch directly; the app generates short
+-- signed URLs server-side for display. All uploads go through the
+-- service-role key in /api/admin/inventory/[id]/image.
+
+-- ── Column on assets
+alter table public.assets
+  add column if not exists image_path text;
+
+-- ── Storage bucket
+insert into storage.buckets (id, name, public)
+values ('asset-images', 'asset-images', false)
+on conflict (id) do nothing;

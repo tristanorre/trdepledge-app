@@ -26,7 +26,8 @@ export type Asset = {
   name: string;
   identifier: string | null;
   category: AssetCategory;
-  icon: string | null;
+  icon: string | null;            // emoji fallback when no uploaded image
+  image_path: string | null;      // storage key in `asset-images` bucket; null = use emoji
   condition: AssetCondition;
   assigned_to: string | null;
   notes: string | null;

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { sanitiseLikeText } from "@/lib/sanitise";
+import { signAssetImageUrls } from "@/lib/storage";
 import ConditionPill from "@/components/ConditionPill";
 import {
   ASSET_CATEGORIES, ASSET_CONDITIONS,
@@ -64,6 +65,14 @@ export default async function AdminInventoryPage({
     workers = (w ?? []) as WorkerListEntry[];
   }
 
+  // One round-trip to sign every asset image at once. Assets without
+  // an image_path don't appear in the map; AssetRow falls back to the
+  // emoji icon for those.
+  const imageUrlByPath = await signAssetImageUrls(
+    supabase,
+    assets.map((a) => a.image_path),
+  );
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8, flexWrap: "wrap" }}>
@@ -104,17 +113,18 @@ export default async function AdminInventoryPage({
       )}
 
       {view === "all"
-        ? <AllAssetsView assets={assets} workersById={mapById(workers)} />
-        : <ByWorkerView assets={assets} workers={workers} />}
+        ? <AllAssetsView assets={assets} workersById={mapById(workers)} imageUrlByPath={imageUrlByPath} />
+        : <ByWorkerView assets={assets} workers={workers} imageUrlByPath={imageUrlByPath} />}
     </div>
   );
 }
 
 // ── Views ────────────────────────────────────────────────────────────
 
-function AllAssetsView({ assets, workersById }: {
+function AllAssetsView({ assets, workersById, imageUrlByPath }: {
   assets: Asset[];
   workersById: Map<string, WorkerListEntry>;
+  imageUrlByPath: Map<string, string>;
 }) {
   if (assets.length === 0) {
     return <Empty>No assets match these filters.</Empty>;
@@ -133,7 +143,7 @@ function AllAssetsView({ assets, workersById }: {
         <section key={cat} style={{ marginBottom: 24 }}>
           <h2 style={categoryHeaderStyle}>{cat} <span style={{ color: "var(--gray)" }}>· {byCat.get(cat)!.length}</span></h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {byCat.get(cat)!.map((a) => <AssetRow key={a.id} asset={a} workersById={workersById} />)}
+            {byCat.get(cat)!.map((a) => <AssetRow key={a.id} asset={a} workersById={workersById} imageUrlByPath={imageUrlByPath} />)}
           </div>
         </section>
       ))}
@@ -141,7 +151,11 @@ function AllAssetsView({ assets, workersById }: {
   );
 }
 
-function ByWorkerView({ assets, workers }: { assets: Asset[]; workers: WorkerListEntry[] }) {
+function ByWorkerView({ assets, workers, imageUrlByPath }: {
+  assets: Asset[];
+  workers: WorkerListEntry[];
+  imageUrlByPath: Map<string, string>;
+}) {
   const pool = assets.filter((a) => !a.assigned_to);
   const byWorker = new Map<string, Asset[]>();
   for (const a of assets) {
@@ -161,7 +175,7 @@ function ByWorkerView({ assets, workers }: { assets: Asset[]; workers: WorkerLis
           <div style={{ color: "var(--gray)", fontSize: 13, padding: 8 }}>Pool empty — every asset is assigned.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {pool.map((a) => <AssetRow key={a.id} asset={a} workersById={new Map()} />)}
+            {pool.map((a) => <AssetRow key={a.id} asset={a} workersById={new Map()} imageUrlByPath={imageUrlByPath} />)}
           </div>
         )}
       </section>
@@ -179,7 +193,7 @@ function ByWorkerView({ assets, workers }: { assets: Asset[]; workers: WorkerLis
               <span style={{ color: "var(--gray)" }}> · {list.length}</span>
             </h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {list.map((a) => <AssetRow key={a.id} asset={a} workersById={new Map([[w.id, w]])} />)}
+              {list.map((a) => <AssetRow key={a.id} asset={a} workersById={new Map([[w.id, w]])} imageUrlByPath={imageUrlByPath} />)}
             </div>
           </section>
         );
@@ -188,13 +202,31 @@ function ByWorkerView({ assets, workers }: { assets: Asset[]; workers: WorkerLis
   );
 }
 
-function AssetRow({ asset, workersById }: { asset: Asset; workersById: Map<string, WorkerListEntry> }) {
+function AssetRow({
+  asset,
+  workersById,
+  imageUrlByPath,
+}: {
+  asset: Asset;
+  workersById: Map<string, WorkerListEntry>;
+  imageUrlByPath: Map<string, string>;
+}) {
   const owner = asset.assigned_to ? workersById.get(asset.assigned_to) : null;
+  const imageUrl = asset.image_path ? imageUrlByPath.get(asset.image_path) ?? null : null;
   return (
     <Link href={`/admin/inventory/${asset.id}`} style={rowStyle}>
-      <div style={{ fontSize: 22, lineHeight: 1, width: 28, textAlign: "center", flexShrink: 0 }}>
-        {asset.icon ?? "📦"}
-      </div>
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt=""
+          style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 8, flexShrink: 0 }}
+        />
+      ) : (
+        <div style={{ fontSize: 22, lineHeight: 1, width: 28, textAlign: "center", flexShrink: 0 }}>
+          {asset.icon ?? "📦"}
+        </div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 800, color: "var(--navy)", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {asset.name}

@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import ConditionPill from "@/components/ConditionPill";
 import AssetManagePanel from "@/components/AssetManagePanel";
+import AssetImageUploader from "@/components/AssetImageUploader";
+import { signAssetImageUrl } from "@/lib/storage";
 import type { Asset } from "@/lib/types-inventory";
 import type { WorkerListEntry } from "@/lib/types";
 
@@ -26,14 +28,33 @@ export default async function AssetDetailPage({ params }: { params: { id: string
   const workers = (workersData ?? []) as WorkerListEntry[];
   const owner = asset.assigned_to ? workers.find((w) => w.id === asset.assigned_to) : null;
 
+  // Sign the image URL server-side so the page renders with the
+  // image visible immediately — no client-side fetch round-trip.
+  const imageUrl = await signAssetImageUrl(supabase, asset.image_path);
+
   return (
     <div>
       <Link href="/admin/inventory" style={backLinkStyle}>← Inventory</Link>
 
       <div style={headerStyle}>
-        <div style={{ fontSize: 36, lineHeight: 1, width: 48, textAlign: "center" }}>
-          {asset.icon ?? "📦"}
-        </div>
+        {/* Header thumbnail: uploaded image when present, emoji
+            fallback otherwise. The full-size image + uploader sit
+            in the Image card below. */}
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt={asset.name}
+            style={{
+              width: 56, height: 56, objectFit: "cover",
+              borderRadius: 10, flex: "0 0 auto",
+            }}
+          />
+        ) : (
+          <div style={{ fontSize: 36, lineHeight: 1, width: 48, textAlign: "center" }}>
+            {asset.icon ?? "📦"}
+          </div>
+        )}
         <div style={{ minWidth: 0, flex: 1 }}>
           <h1 style={titleStyle}>{asset.name}</h1>
           <div style={{ color: "var(--gray)", fontSize: 13, marginTop: 4 }}>
@@ -57,6 +78,14 @@ export default async function AssetDetailPage({ params }: { params: { id: string
         <Row label="Last updated" value={new Date(asset.updated_at).toLocaleString("en-AU", {
           day: "numeric", month: "short", hour: "numeric", minute: "2-digit",
         })} />
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <AssetImageUploader
+          assetId={asset.id}
+          initialUrl={imageUrl}
+          emojiFallback={asset.icon}
+        />
       </div>
 
       <AssetManagePanel asset={asset} workers={workers} />
