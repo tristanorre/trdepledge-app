@@ -343,10 +343,15 @@ main { padding-top: 0; }
 /* ── HERO RIGHT (PHOTO + OVERLAYS) ───────────────────────────────── */
 
 .v16-hero-right {
-  /* Spans both grid rows so the poster extends down through the
-     walker strip's vertical zone. z-index above the walker strip
-     keeps any walkers that drift into the right column visually
-     behind the figure. */
+  /* Spans both grid rows so the poster sits in a centred area that
+     extends down through the walker strip's vertical zone. z-index
+     above the walker strip keeps any walkers that drift into the
+     right column visually behind the figure.
+
+     Right padding mirrors the 56px left padding used in
+     .v16-hero-left so the poster has the same edge-clearance as the
+     headline/CTAs on the other side, instead of running flush to
+     the viewport edge. */
   grid-column: 2;
   grid-row: 1 / 3;
   position: relative;
@@ -354,18 +359,23 @@ main { padding-top: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px 12px 0;
+  padding: 32px 56px 32px 24px;
 }
 .v16-hero-image {
-  /* `contain` so the poster's bottom service icons + tagline aren't
-     cropped — the AI photo previously used `cover` because it had no
-     bottom info to preserve. */
-  width: 100%;
-  height: 100%;
-  max-height: 720px;
-  object-fit: contain;
-  object-position: center;
+  /* The poster is intentionally constrained: capping max-width and
+     max-height stops it from inflating on wide viewports (where 50%
+     of the screen would balloon the artwork), and `height: auto`
+     keeps the 1122×1402 aspect ratio intact so neither dimension
+     gets distorted. The smaller of the two caps wins:
+       width  cap → height = 480 / 0.8 = 600
+       height cap → width  = 600 × 0.8 = 480
+     which means at standard viewports the poster lands at 480×600. */
   display: block;
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  max-height: 600px;
+  object-fit: contain;
 }
 
 .v16-doug-bubble {
