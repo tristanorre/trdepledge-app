@@ -84,6 +84,35 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if ("invoice_sent" in body) patch.invoice_sent = Boolean(body.invoice_sent);
   if ("xero_invoice_id" in body) patch.xero_invoice_id = body.xero_invoice_id ? String(body.xero_invoice_id) : null;
 
+  // Quote estimate fields (migration 0022). Validate both — DB check
+  // constraint also rejects non-positive values, but failing fast in
+  // the API gives a friendlier error.
+  if ("quote_hours_per_worker" in body) {
+    const raw = body.quote_hours_per_worker;
+    if (raw == null || raw === "") {
+      patch.quote_hours_per_worker = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) {
+        return NextResponse.json({ error: "quote_hours_per_worker must be > 0" }, { status: 400 });
+      }
+      patch.quote_hours_per_worker = n;
+    }
+  }
+  if ("quote_worker_count" in body) {
+    const raw = body.quote_worker_count;
+    if (raw == null || raw === "") {
+      patch.quote_worker_count = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+        return NextResponse.json({ error: "quote_worker_count must be a positive integer" }, { status: 400 });
+      }
+      patch.quote_worker_count = n;
+    }
+  }
+  if ("xero_quote_id" in body) patch.xero_quote_id = body.xero_quote_id ? String(body.xero_quote_id) : null;
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }

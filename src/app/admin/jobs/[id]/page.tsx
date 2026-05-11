@@ -12,6 +12,7 @@ import JobSmsPanel from "@/components/JobSmsPanel";
 import SendToXeroButton from "@/components/SendToXeroButton";
 import ReopenJobButton from "@/components/ReopenJobButton";
 import TimeLogEditor from "@/components/TimeLogEditor";
+import JobQuotePanel from "@/components/JobQuotePanel";
 import type { Job, WorkerListEntry } from "@/lib/types";
 import type { JobMaterialLine } from "@/lib/cost";
 import { calculateCost } from "@/lib/cost";
@@ -36,7 +37,7 @@ function fmtTime(time: string | null): string {
 }
 
 export default async function JobDetailPage({ params }: { params: { id: string } }) {
-  await requireAdmin();
+  const session = await requireAdmin();
   const supabase = getServiceClient();
   if (!supabase) return <p>Database not configured.</p>;
 
@@ -84,6 +85,20 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const cost = calculateCost(j, materials, rates);
   const isComplete = j.status === "completed";
+
+  // Quote panel needs to know whether Xero is connected so the Send
+  // button can be disabled with a helpful hint. Cheap lookup — one
+  // row keyed by user id.
+  let xeroConnected = false;
+  {
+    const { data: tok } = await supabase
+      .from("xero_tokens")
+      .select("user_id")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+    xeroConnected = !!tok;
+  }
+  const isPendingReview = j.status === "pending_review";
 
   return (
     <div>
@@ -171,6 +186,21 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           initialTimeLog={(j.time_log ?? {}) as Record<string, { start?: string; end?: string }>}
         />
       </div>
+
+      {/* Quote estimating — only visible while the job is in
+          `pending_review` status. Once Thomas marks it scheduled
+          (= quote accepted) or cancelled, this panel disappears and
+          the regular cost breakdown takes over from clocked-in time. */}
+      {isPendingReview && (
+        <div style={{ ...cardStyle, marginTop: 20 }}>
+          <JobQuotePanel
+            job={j}
+            materialsCents={cost.materials_cents}
+            rateCents={cost.rate_cents}
+            xeroConnected={xeroConnected}
+          />
+        </div>
+      )}
 
       <div style={{ ...cardStyle, marginTop: 20 }}>
         <CostBreakdown cost={cost} isComplete={isComplete} />

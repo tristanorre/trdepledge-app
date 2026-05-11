@@ -183,6 +183,68 @@ export function calculateCost(
   };
 }
 
+// ─────────────────────────────────────────────────────────────────
+// Quote estimating — separate from actual-cost calculation.
+//
+// When Thomas is preparing a quote the job has no time_log yet, so
+// he gives the system an estimated hours-per-worker and worker
+// count. We multiply by the configured rate (no 5-min rounding —
+// estimates are estimates, not billable measurements) and add
+// the planned materials list.
+//
+// Returns the same CostBreakdown shape so the existing display +
+// Xero adapter can reuse it. `billed_hours` is the right Quantity
+// for the Xero Quote line item.
+// ─────────────────────────────────────────────────────────────────
+export function calculateQuoteEstimate(
+  job: Pick<Job, "client_type">,
+  estimateHoursPerWorker: number,
+  estimateWorkerCount: number,
+  materials: JobMaterialLine[],
+  rates: Rates,
+): CostBreakdown {
+  const rate_cents = rateFor(rates, job.client_type as ClientType);
+  const safeHours = Math.max(0, estimateHoursPerWorker);
+  const safeWorkers = Math.max(1, Math.floor(estimateWorkerCount));
+
+  const total_worker_hours = safeHours * safeWorkers;
+  // 12 blocks per hour = 5-min granularity — matches actual-cost
+  // rounding so a quote of 2.0 hours × 2 workers prices identically
+  // to an actual job of 2.0 hours × 2 workers.
+  const billed_blocks = Math.round(total_worker_hours * 12);
+  const labour_cents = Math.round((billed_blocks * rate_cents) / 12);
+
+  const material_lines = materials.map((m) => {
+    const base = m.base_price_cents * m.qty;
+    const line_total = Math.round(base * (1 + m.markup_percent / 100));
+    return {
+      id: m.id,
+      name: m.name,
+      qty: m.qty,
+      unit: m.unit,
+      base_cents: m.base_price_cents,
+      markup_percent: m.markup_percent,
+      line_total_cents: line_total,
+    };
+  });
+  const materials_cents = material_lines.reduce((s, l) => s + l.line_total_cents, 0);
+
+  return {
+    rate_cents,
+    worker_count: safeWorkers,
+    workers_billed: safeWorkers,
+    hours: total_worker_hours,
+    billed_hours: total_worker_hours,
+    billed_blocks,
+    waiting_hours: 0,
+    labour_cents,
+    waiting_cents: 0,
+    material_lines,
+    materials_cents,
+    total_cents: labour_cents + materials_cents,
+  };
+}
+
 export function fmtMoney(cents: number): string {
   // Always two decimals. Use AUD locale; symbol added explicitly so the
   // output is consistent across SSR / CSR locale variations.

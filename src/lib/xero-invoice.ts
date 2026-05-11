@@ -112,6 +112,84 @@ export async function sendInvoiceForJob(
   };
 }
 
+// ── Quote send (separate endpoint, similar shape) ────────────────
+//
+// Creates a draft Xero Quote from the in-app quote estimate. Xero's
+// /Quotes endpoint takes the same Contact + LineItems shape as
+// invoices but with Status="DRAFT" so Thomas can review and click
+// "Send" in Xero, which emails the customer the PDF.
+//
+// We reuse buildLineItems() — the labour line wording is updated
+// inside that function via a `quoteMode` flag so the description
+// reflects "estimated" rather than "billed" hours.
+export async function sendQuoteForJob(
+  supabase: SupabaseClient,
+  adminUserId: string,
+  job: Job & { client: { id: string; name: string; email: string | null; xero_contact_id: string | null } | null },
+  cost: CostBreakdown,
+): Promise<{ ok: true; quote_id: string; quote_number: string | null } | { ok: false; error: string; detail?: unknown }> {
+  const tokens = await getValidTokens(supabase, adminUserId);
+  if (!tokens) return { ok: false, error: "not_connected" };
+
+  let contactId = job.client?.xero_contact_id ?? null;
+  if (!contactId) {
+    contactId = await findOrCreateContact(tokens.access_token, tokens.tenant_id, {
+      name: job.client_name,
+      email: job.client?.email ?? null,
+    });
+    if (contactId && job.client?.id) {
+      await supabase.from("clients").update({ xero_contact_id: contactId }).eq("id", job.client.id);
+    }
+  }
+  if (!contactId) return { ok: false, error: "contact_lookup_failed" };
+
+  const lineItems = buildLineItems(job, cost, { quoteMode: true });
+  if (lineItems.length === 0) return { ok: false, error: "nothing_to_quote" };
+
+  // Quote dates: issue today, valid for 30 days. Xero's Quote shape
+  // uses ExpiryDate (not DueDate like invoices).
+  const issueDate = todayISO();
+  const expiryDate = addDaysISO(issueDate, 30);
+
+  const payload = {
+    Contact: { ContactID: contactId },
+    Date: issueDate,
+    ExpiryDate: expiryDate,
+    Reference: ndisReference(job),
+    LineItems: lineItems,
+    Status: "DRAFT",  // Thomas reviews + clicks Send inside Xero
+    Title: "Quote",
+    Summary: "Estimated cost for the work described below.",
+  };
+
+  const res = await fetch(`${XERO_API}/Quotes`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${tokens.access_token}`,
+      "Xero-Tenant-Id": tokens.tenant_id,
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    console.error("[xero quote] send failed", { status: res.status, data });
+    return { ok: false, error: `http_${res.status}`, detail: data };
+  }
+
+  const quote = (data as { Quotes?: Array<{ QuoteID?: string; QuoteNumber?: string }> })
+    .Quotes?.[0];
+  if (!quote?.QuoteID) return { ok: false, error: "missing_quote_id", detail: data };
+
+  return {
+    ok: true,
+    quote_id: quote.QuoteID,
+    quote_number: quote.QuoteNumber ?? null,
+  };
+}
+
 type Contact = { name: string; email: string | null };
 
 async function findOrCreateContact(
@@ -164,22 +242,24 @@ async function findOrCreateContact(
 function buildLineItems(
   job: Job,
   cost: CostBreakdown,
+  opts: { quoteMode?: boolean } = {},
 ): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [];
   const isNdis: boolean = job.client_type === "NDIS";
   const isAged: boolean = (job.client_type as ClientType) === "Aged Care";
+  const isQuote = opts.quoteMode === true;
 
-  // ── Labour. Quantity is `billed_hours` — the per-worker rounded-up
-  // total under the first-hour-minimum + 15-min-block rule (see
-  // src/lib/cost.ts). Multiplied by the hourly UnitAmount this equals
-  // labour_cents/100 exactly, so the Xero line total agrees with the
-  // breakdown shown to Thomas.
+  // ── Labour. Quantity is `billed_hours` — total worker-hours after
+  // 5-min block rounding (see src/lib/cost.ts). Quantity × UnitAmount
+  // equals labour_cents/100 exactly, so the Xero line total agrees
+  // with the breakdown shown to Thomas.
   if (cost.labour_cents > 0) {
     const rateDollars = cost.rate_cents / 100;
+    const labelSuffix = isQuote ? "estimated" : "5-min block billing";
     const labourLine: Record<string, unknown> = {
       Description: isNdis
-        ? `${job.client_type} support — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, 1h min + 15-min blocks)`
-        : `Garden / yard work — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, 1h min + 15-min blocks)`,
+        ? `${job.client_type} support — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, ${labelSuffix})`
+        : `Garden / yard work — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, ${labelSuffix})`,
       Quantity: round3(cost.billed_hours),
       UnitAmount: round2(rateDollars),
       AccountCode: salesAccount(),

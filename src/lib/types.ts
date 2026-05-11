@@ -57,6 +57,16 @@ export type Job = {
 
   invoice_sent: boolean;
   xero_invoice_id: string | null;
+
+  // Quote-stage fields (migration 0022). Populated while the job is
+  // in pending_review status and Thomas is preparing a quote. Once
+  // the customer accepts in Xero and Thomas flips status to
+  // `scheduled`, these stay as a record of what was quoted; the
+  // actual invoice on completion uses the real time_log + materials.
+  quote_hours_per_worker: number | null;
+  quote_worker_count: number | null;
+  xero_quote_id: string | null;
+  quote_sent_at: string | null;
 };
 
 export type WorkerListEntry = {
