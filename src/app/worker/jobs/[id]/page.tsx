@@ -103,7 +103,7 @@ export default async function WorkerJobDetailPage({ params }: { params: { id: st
           // Pass only this worker's entry — `time_log` is keyed by
           // worker uuid since migration 0018, and the button only
           // ever shows / mutates the current user's clock state.
-          initialTimeLog={(j.time_log?.[session.user.id] ?? {}) as { start?: string; end?: string }}
+          initialTimeLog={(j.time_log?.[session.user.id] ?? {}) as import("@/lib/cost").TimeEntry}
         />
       </div>
 

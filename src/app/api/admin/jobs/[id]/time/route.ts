@@ -29,10 +29,14 @@ export const runtime = "nodejs";
 
 type Ctx = { params: { id: string } };
 
+type BreakInput = { start: string; end?: string | null };
 type Patch = {
   worker_id: string;
   start: string | null;
   end: string | null;
+  // Optional. When provided, replaces the worker's `breaks` array
+  // wholesale. Omit to leave breaks unchanged.
+  breaks: Array<{ start: string; end: string | null }> | undefined;
 };
 
 function parsePatch(raw: unknown): Patch | { error: string } {
@@ -58,7 +62,28 @@ function parsePatch(raw: unknown): Patch | { error: string } {
     return { error: "end must be after start" };
   }
 
-  return { worker_id, start, end };
+  // Breaks: optional. If present, must be an array; each break has a
+  // valid start and an optional end (null when the break is still
+  // open). end must be after start when both set.
+  let breaks: Patch["breaks"] = undefined;
+  if (Array.isArray(body.breaks)) {
+    const out: NonNullable<Patch["breaks"]> = [];
+    for (const raw of body.breaks as unknown[]) {
+      if (!raw || typeof raw !== "object") return { error: "break entry invalid" };
+      const b = raw as BreakInput;
+      const bs = b.start ? String(b.start) : "";
+      if (!bs || Number.isNaN(Date.parse(bs))) return { error: "break start is not a valid date" };
+      const be = b.end == null || b.end === "" ? null : String(b.end);
+      if (be && Number.isNaN(Date.parse(be))) return { error: "break end is not a valid date" };
+      if (be && Date.parse(be) <= Date.parse(bs)) {
+        return { error: "break end must be after start" };
+      }
+      out.push({ start: bs, end: be });
+    }
+    breaks = out;
+  }
+
+  return { worker_id, start, end, breaks };
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -76,7 +101,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if ("error" in parsed) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const { worker_id, start, end } = parsed;
+  const { worker_id, start, end, breaks } = parsed;
 
   const { data: job, error: loadErr } = await supabase
     .from("jobs")
@@ -95,16 +120,31 @@ export async function PATCH(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Worker is not assigned to this job" }, { status: 400 });
   }
 
-  const fullLog = (job.time_log ?? {}) as Record<string, { start?: string; end?: string }>;
+  type Break = { start: string; end?: string };
+  type LogEntry = { start?: string; end?: string; breaks?: Break[] };
+  const fullLog = (job.time_log ?? {}) as Record<string, LogEntry>;
+  const existing = fullLog[worker_id] ?? {};
 
   // Build the patch.
   const nextLog: typeof fullLog = { ...fullLog };
-  if (start === null && end === null) {
+  if (start === null && end === null && breaks === undefined) {
+    // Clear the worker's entry entirely.
     delete nextLog[worker_id];
+  } else if (start === null && end === null && breaks !== undefined) {
+    // Caller passed only `breaks` — keep existing start/end, replace
+    // breaks. Defensive against accidental wipe of an active shift.
+    nextLog[worker_id] = {
+      ...existing,
+      breaks: normaliseBreaks(breaks),
+    };
   } else {
-    const entry: { start?: string; end?: string } = {};
+    const entry: LogEntry = {};
     if (start) entry.start = new Date(start).toISOString();
     if (end)   entry.end   = new Date(end).toISOString();
+    // If breaks weren't sent, preserve the existing list. If sent,
+    // replace it.
+    if (breaks !== undefined) entry.breaks = normaliseBreaks(breaks);
+    else if (existing.breaks) entry.breaks = existing.breaks;
     nextLog[worker_id] = entry;
   }
 
@@ -137,4 +177,19 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   revalidatePath(`/admin/jobs/${params.id}`);
   return NextResponse.json({ job: updated });
+}
+
+// Normalise a parsed breaks array: drop the optional null on `end`
+// so the stored shape matches what the worker clock route writes
+// ({ start, end? }), and convert input strings to ISO UTC.
+function normaliseBreaks(
+  input: Array<{ start: string; end: string | null }>,
+): Array<{ start: string; end?: string }> {
+  return input.map((b) => {
+    const out: { start: string; end?: string } = {
+      start: new Date(b.start).toISOString(),
+    };
+    if (b.end) out.end = new Date(b.end).toISOString();
+    return out;
+  });
 }

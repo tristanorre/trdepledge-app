@@ -53,7 +53,15 @@ export type Job = {
   // and the migration in 0018 converts the previous single
   // `{start,end}` shape into this keyed form so all readers can
   // assume the new shape.
-  time_log: Record<string, { start?: string; end?: string }>;
+  time_log: Record<string, {
+    start?: string;
+    end?: string;
+    // Optional pause intervals during the shift. Each is a
+    // { start, end? } pair (the last one's `end` is missing while
+    // the worker is currently on break). Break minutes are
+    // SUBTRACTED from billable time in calculateCost().
+    breaks?: Array<{ start: string; end?: string }>;
+  }>;
 
   invoice_sent: boolean;
   xero_invoice_id: string | null;

@@ -57,19 +57,52 @@ export type CostBreakdown = {
   total_cents: number;
 };
 
-export type TimeEntry = { start?: string; end?: string };
+// Per-worker time entry on a job.
+//
+// `breaks` is a list of paused intervals during the shift. Each one
+// is a `{ start, end? }` pair. While a worker is currently on break
+// the most recent entry has a `start` but no `end`. Break minutes
+// are SUBTRACTED from billable on-site time inside
+// `billingForEntry()` — you don't pay people for being on break.
+//
+// An open break (end missing) counts up to "now" the same way an
+// open shift does, so the cost preview stays accurate live.
+export type BreakEntry = { start: string; end?: string };
+export type TimeEntry = {
+  start?: string;
+  end?: string;
+  breaks?: BreakEntry[];
+};
 export type TimeLog = Record<string, TimeEntry>;
 
-// Hours for a single worker (or the open clock if `end` is missing).
-// If clocked in but not out, count up to "now" so the in-progress total
-// is meaningful at a glance.
+// Sum of break minutes in an entry. An open break (no end) counts
+// up to `now` so the in-progress total reflects what's currently
+// happening.
+export function breakMinutesForEntry(entry: TimeEntry | undefined, now = new Date()): number {
+  if (!entry?.breaks?.length) return 0;
+  let total = 0;
+  for (const b of entry.breaks) {
+    if (!b?.start) continue;
+    const bs = new Date(b.start).getTime();
+    const be = b.end ? new Date(b.end).getTime() : now.getTime();
+    const m = (be - bs) / 60_000;
+    if (Number.isFinite(m) && m > 0) total += m;
+  }
+  return total;
+}
+
+// Net working hours for a single worker (or the open clock if `end`
+// is missing). Break time is subtracted. If clocked in but not out,
+// count up to "now" so the in-progress total stays meaningful.
 export function hoursForEntry(entry: TimeEntry | undefined, now = new Date()): number {
   if (!entry?.start) return 0;
   const start = new Date(entry.start);
   const end = entry.end ? new Date(entry.end) : now;
   const ms = end.getTime() - start.getTime();
   if (!Number.isFinite(ms) || ms <= 0) return 0;
-  return ms / 3_600_000;
+  const grossHours = ms / 3_600_000;
+  const breakHours = breakMinutesForEntry(entry, now) / 60;
+  return Math.max(0, grossHours - breakHours);
 }
 
 // Sum of hours across all workers in a `time_log`.
@@ -100,8 +133,14 @@ function billingForEntry(
 
   const start = new Date(entry.start).getTime();
   const end = entry.end ? new Date(entry.end).getTime() : now.getTime();
-  const onSiteMinutes = (end - start) / 60_000;
-  if (!Number.isFinite(onSiteMinutes) || onSiteMinutes <= 0) return empty;
+  const grossOnSiteMinutes = (end - start) / 60_000;
+  if (!Number.isFinite(grossOnSiteMinutes) || grossOnSiteMinutes <= 0) return empty;
+
+  // Subtract break minutes — workers don't bill for time on break.
+  // Open breaks (start with no end) count up to "now" so the live
+  // preview is accurate even mid-break.
+  const breakMins = breakMinutesForEntry(entry, now);
+  const onSiteMinutes = Math.max(0, grossOnSiteMinutes - breakMins);
 
   // Waiting time is shared by the crew and added to every clocked-in
   // worker's billable minutes. Workers who never clocked in bail out
@@ -109,7 +148,7 @@ function billingForEntry(
   const billableMinutes = onSiteMinutes + Math.max(0, waiting_minutes);
 
   // 5-min block rounding. ceil(3/5) = 1, ceil(67/5) = 14.
-  const billed_blocks = Math.ceil(billableMinutes / 5);
+  const billed_blocks = billableMinutes > 0 ? Math.ceil(billableMinutes / 5) : 0;
 
   // Multiply-first-round-once: with rate=5500 (Private), 12 blocks
   // gives round(12 × 5500 / 12) = 5500 — exact. No drift across a
