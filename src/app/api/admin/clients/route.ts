@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { sanitiseLikeText } from "@/lib/sanitise";
+import { ensureRecurringJobForClient } from "@/lib/recurring-jobs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -100,5 +101,15 @@ export async function POST(req: Request) {
     console.error("[admin/clients POST]", error);
     return NextResponse.json({ error: "Could not create client" }, { status: 500 });
   }
-  return NextResponse.json({ client: data }, { status: 201 });
+
+  // If the new client is recurring AND has a due date, auto-create the
+  // first job for that date so it lands on the schedule. Silent
+  // no-op when the client isn't recurring; idempotent if a duplicate
+  // somehow already exists.
+  const recurringJob = await ensureRecurringJobForClient(supabase, data);
+
+  return NextResponse.json({
+    client: data,
+    recurring_job: recurringJob,
+  }, { status: 201 });
 }

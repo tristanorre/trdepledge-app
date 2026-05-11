@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
+import { ensureRecurringJobForClient } from "@/lib/recurring-jobs";
 
 export const runtime = "nodejs";
 
@@ -97,7 +98,17 @@ export async function PATCH(req: Request, { params }: Ctx) {
     .single();
 
   if (error) return NextResponse.json({ error: "Could not update" }, { status: 500 });
-  return NextResponse.json({ client: data });
+
+  // If this update set or changed the recurring schedule, make sure
+  // there's a scheduled job on the calendar for the new due date.
+  // Idempotent — silent no-op when the date hasn't changed or the
+  // client isn't recurring.
+  let recurringJob: Awaited<ReturnType<typeof ensureRecurringJobForClient>> | null = null;
+  if ("next_service_due" in patch || "service_frequency_days" in patch) {
+    recurringJob = await ensureRecurringJobForClient(supabase, data);
+  }
+
+  return NextResponse.json({ client: data, recurring_job: recurringJob });
 }
 
 // Delete is only safe when no jobs reference the client. The FK on
