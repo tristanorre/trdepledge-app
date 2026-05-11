@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { getIntegrationStatuses, type IntegrationKey } from "@/lib/integrations";
 import XeroConnectButton from "@/components/XeroConnectButton";
+import XeroAccountPicker from "@/components/XeroAccountPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,7 @@ export default async function AdminSettingsPage({ searchParams }: { searchParams
               {s.key === "xero" && s.configured && (
                 <div style={{ marginTop: 12 }}>
                   <XeroConnectButton connected={xeroConnected} />
+                  {xeroConnected && <XeroAccountPicker />}
                 </div>
               )}
             </div>

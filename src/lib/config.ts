@@ -38,3 +38,52 @@ export async function getRates(supabase: SupabaseClient | null): Promise<Rates> 
 export function rateFor(rates: Rates, clientType: ClientType): number {
   return rates[clientType];
 }
+
+// ── Xero "sales" account code ────────────────────────────────────────
+//
+// Xero requires every invoice line to reference an account code that
+// exists AND is active in the org's chart of accounts. The standard
+// AU template uses "200" for Sales, but it's commonly archived (or
+// renamed / replaced) once an org is in real use. We:
+//   1. Prefer a value saved in the `config` table (set by Thomas via
+//      the Settings page once he's picked from his actual chart).
+//   2. Fall back to the XERO_SALES_ACCOUNT_CODE env var.
+//   3. Fall back to "200" as a last resort.
+
+const SALES_ACCOUNT_KEY = "xero_sales_account_code";
+
+export async function getXeroSalesAccountCode(
+  supabase: SupabaseClient | null,
+): Promise<string> {
+  if (supabase) {
+    const { data } = await supabase
+      .from("config")
+      .select("value")
+      .eq("key", SALES_ACCOUNT_KEY)
+      .maybeSingle();
+    const v = data?.value;
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  if (process.env.XERO_SALES_ACCOUNT_CODE) {
+    return process.env.XERO_SALES_ACCOUNT_CODE;
+  }
+  return "200";
+}
+
+export async function setXeroSalesAccountCode(
+  supabase: SupabaseClient,
+  code: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const trimmed = code.trim();
+  if (!trimmed) return { ok: false, error: "Account code is empty" };
+  // Upsert by key so re-saves overwrite cleanly. The `config` table is
+  // (key text primary key, value text) — see Slice 1 schema.
+  const { error } = await supabase
+    .from("config")
+    .upsert({ key: SALES_ACCOUNT_KEY, value: trimmed }, { onConflict: "key" });
+  if (error) {
+    console.error("[config] save sales account failed", error);
+    return { ok: false, error: "Could not save account code" };
+  }
+  return { ok: true };
+}

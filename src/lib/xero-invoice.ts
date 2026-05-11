@@ -3,6 +3,7 @@ import { getValidTokens } from "@/lib/xero";
 import { fmtMoney, type CostBreakdown } from "@/lib/cost";
 import type { Job, ClientType } from "@/lib/types";
 import { todayISO, addDaysISO } from "@/lib/dates";
+import { getXeroSalesAccountCode } from "@/lib/config";
 
 // Xero invoice send. Builds the payload from the cost breakdown +
 // upserts the contact (find-by-name OR create-new) before POSTing.
@@ -15,12 +16,10 @@ import { todayISO, addDaysISO } from "@/lib/dates";
 const XERO_API = "https://api.xero.com/api.xro/2.0";
 const NDIS_SUPPORT_ITEM = "01_019_0120_1_1";
 
-// Default sales account code in Xero AU. Thomas can override this with
-// the `XERO_SALES_ACCOUNT_CODE` env var if his chart of accounts uses
-// a different one. 200 is "Sales" in the standard AU template.
-function salesAccount(): string {
-  return process.env.XERO_SALES_ACCOUNT_CODE ?? "200";
-}
+// Sales account code is now resolved per-request from the `config`
+// table (admin picks it on /admin/settings after connecting Xero) with
+// XERO_SALES_ACCOUNT_CODE env var as fallback and "200" as last
+// resort. See getXeroSalesAccountCode() in lib/config.ts.
 
 export type XeroSendResult =
   | { ok: true; invoice_id: string; invoice_number: string | null }
@@ -57,8 +56,10 @@ export async function sendInvoiceForJob(
     return { ok: false, error: "contact_lookup_failed" };
   }
 
-  // ── 2. Build the line items.
-  const lineItems = buildLineItems(job, cost);
+  // ── 2. Build the line items. Resolve the sales account code from
+  // config so admin can change it without redeploying.
+  const salesAccountCode = await getXeroSalesAccountCode(supabase);
+  const lineItems = buildLineItems(job, cost, { salesAccountCode });
 
   if (lineItems.length === 0) {
     return { ok: false, error: "nothing_to_invoice" };
@@ -143,7 +144,8 @@ export async function sendQuoteForJob(
   }
   if (!contactId) return { ok: false, error: "contact_lookup_failed" };
 
-  const lineItems = buildLineItems(job, cost, { quoteMode: true });
+  const salesAccountCode = await getXeroSalesAccountCode(supabase);
+  const lineItems = buildLineItems(job, cost, { quoteMode: true, salesAccountCode });
   if (lineItems.length === 0) return { ok: false, error: "nothing_to_quote" };
 
   // Quote dates: issue today, valid for 30 days. Xero's Quote shape
@@ -242,12 +244,18 @@ async function findOrCreateContact(
 function buildLineItems(
   job: Job,
   cost: CostBreakdown,
-  opts: { quoteMode?: boolean } = {},
+  opts: { quoteMode?: boolean; salesAccountCode?: string } = {},
 ): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [];
   const isNdis: boolean = job.client_type === "NDIS";
   const isAged: boolean = (job.client_type as ClientType) === "Aged Care";
   const isQuote = opts.quoteMode === true;
+  // Fallback for callers that don't pass the code (e.g. previewLines
+  // below). The sync path can't await config, so it gets the env-var
+  // tier of the fallback chain.
+  const accountCode = opts.salesAccountCode
+    ?? process.env.XERO_SALES_ACCOUNT_CODE
+    ?? "200";
 
   // ── Labour. Quantity is `billed_hours` — total worker-hours after
   // 5-min block rounding (see src/lib/cost.ts). Quantity × UnitAmount
@@ -262,7 +270,7 @@ function buildLineItems(
         : `Garden / yard work — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, ${labelSuffix})`,
       Quantity: round3(cost.billed_hours),
       UnitAmount: round2(rateDollars),
-      AccountCode: salesAccount(),
+      AccountCode: accountCode,
     };
     if (isNdis) labourLine.ItemCode = NDIS_SUPPORT_ITEM;
     items.push(labourLine);
@@ -281,7 +289,7 @@ function buildLineItems(
       Description: `${m.name}${m.markup_percent ? ` (incl ${m.markup_percent}% markup)` : ""}`,
       Quantity: round3(m.qty),
       UnitAmount: round2(unitDollars),
-      AccountCode: salesAccount(),
+      AccountCode: accountCode,
     });
   }
 
