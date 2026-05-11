@@ -3,7 +3,7 @@
 A practical guide to the field-service-management app. Two audiences: **Thomas** (admin) and **field workers**. Skip to whichever applies to you.
 
 > **App URL:** https://trdepledgegardeningandmaintenance.com/login
-> **Last updated:** 10 May 2026
+> **Last updated:** 11 May 2026
 
 ---
 
@@ -66,7 +66,46 @@ If it's not a real lead (spam, wrong area, etc.), click **"Mark as ignored"** in
 - **In progress** — at least one worker has clocked in
 - **Completed** — every assigned worker has clocked out (auto-set, see §1.4)
 - **Cancelled** — job called off, no charge
-- **Pending review** — manual hold (rarely used)
+- **Pending review** — quoting in progress, or manual hold
+
+### Quoting a job (status: Pending review)
+
+When a new enquiry comes in and you want to send the customer a price before committing to the work, set the job to **Pending review**. While in that status, the job page shows a **Quote estimate** card that lets you work out the total, then push a draft quote into Xero for the customer to receive.
+
+**Typical flow:**
+
+1. **Convert the enquiry to a client + job** (§1.1). The new job lands as Pending review by default if it came from an enquiry; otherwise edit the job and set status to **Pending review**.
+2. **Add the materials you expect to use** — Materials section on the job page, "+ Add line", same picker as for any other job. The quoted price uses these line totals (with markup) — quantities can be adjusted when the actual work is done.
+3. **Fill in the Quote estimate card:**
+   - **Hours per worker** — how long each worker is likely to spend on site (e.g. `2.5`)
+   - **Workers** — how many staff will be on the job (e.g. `2`)
+4. **Live total updates** as you type. The breakdown shows:
+   - Rate (hourly rate for this client type)
+   - Labour estimate (workers × hours × rate)
+   - Materials (from the section above)
+   - **Quote total** — what the customer will see
+5. **Adjust until you're happy.** Click **Save estimate** to keep the numbers without sending yet, or **Send Quote to Xero →** when ready.
+
+**What happens when you send:**
+
+- A draft Quote is created in Xero with your line items, dated today, valid for 30 days.
+- The card flips to "Quote sent — [date]" with the Xero quote ID.
+- Open Xero → find the quote → click **Send** there. Xero generates the branded PDF and emails the customer.
+- The customer responds. Xero shows whether the quote is Accepted or Declined; the app doesn't track that automatically (no webhook).
+
+**When the customer responds:**
+
+| Their response | What to do in the app |
+|---|---|
+| **Accepted** | Edit the job → status **Scheduled** → set date, time, assigned workers. Normal job flow takes over. |
+| **Declined** | Edit the job → status **Cancelled**. The job stays in history but doesn't appear in active lists. |
+| **Wants changes** | Reopen the Xero quote, edit the line items there. The app doesn't have a "re-send quote" button — the original `xero_quote_id` stays on the job; just create a fresh quote in Xero or revise the existing one. |
+
+**Notes:**
+
+- The Quote estimate card only shows while status is **Pending review**. Move past that and the normal cost breakdown takes over.
+- Sending is **idempotent** — clicking Send Quote twice won't create two quotes in Xero. To replace the quote, clear `xero_quote_id` on the job (Edit form) first, or just edit the existing quote directly in Xero.
+- The quote uses **simple `hours × workers × rate`** — no 5-min block rounding. Once the job runs, the actual invoice uses the real time-log and the 5-min block billing rule.
 
 ## 1.3 — During and after a job
 
@@ -312,6 +351,8 @@ Bottom-nav → **Account**:
 | **SMS auto-reply not firing** | Check `/admin/settings` — Twilio should say "Active". If "Not configured", env vars need setting in Vercel. The customer must have given a phone number in the form (it's optional). |
 | **A job's cost looks wrong** | Most common cause: a worker forgot to clock out or has the wrong end-time. Check the Time log card on the job. |
 | **The "Send to Xero" button is missing** | (a) Job must be `Completed`. (b) Xero must be both **configured** (env vars in Vercel) AND **connected** (OAuth done from `/admin/settings`). |
+| **The Quote estimate card isn't showing** | Job status must be **Pending review**. Edit the job → set status to Pending review → save → card appears. |
+| **"Send Quote to Xero" is disabled** | (a) Hours-per-worker or worker count is empty / zero. (b) Xero isn't connected — go to `/admin/settings` and click Connect Xero first. |
 | **Photos won't upload** | Worker's phone is offline or has no signal. Photos queue and upload when back online. If still broken after that, check Supabase Storage's `job-photos` bucket isn't full / disabled. |
 | **A worker can see jobs that aren't theirs** | They shouldn't — every worker query filters by `assigned_worker_ids`. If this is happening, it's a bug — tell the dev. |
 | **Worker's PWA install isn't sticking** | iOS Safari only allows install via the share button → Add to Home Screen. If they used Chrome on iOS, the install won't work — tell them to use Safari. |
