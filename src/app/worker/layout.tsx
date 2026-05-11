@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 const WORKER_NAV = [
   { href: "/worker",          label: "My Jobs" },
   { href: "/worker/schedule", label: "Schedule" },
+  { href: "/worker/hours",    label: "Hours" },
   { href: "/worker/leave",    label: "Leave" },
 ];
 
@@ -88,7 +89,7 @@ const bottomNavStyle: React.CSSProperties = {
   background: "var(--navy)",
   borderTop: "1px solid rgba(255,255,255,0.08)",
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
+  gridTemplateColumns: "repeat(4, 1fr)",
   zIndex: 100,
 };
 const bottomNavLinkStyle: React.CSSProperties = {
