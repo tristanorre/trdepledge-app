@@ -112,8 +112,18 @@ export async function loadDaySchedule(
 export type SlotColour = "free" | "scheduled" | "in_progress" | "off" | "leave";
 
 export function colourForSlot(state: WorkerDayState, slotStartMins: number): SlotColour {
+  // Order of precedence (most → least important):
+  //   1. On leave wins everything — workers on leave shouldn't be
+  //      doing anything, but if a job somehow lands here we still
+  //      surface the leave state so the conflict is visible.
+  //   2. A job in this slot wins over roster state. Previously the
+  //      `if (!rostered) return "off"` check sat above the job loop,
+  //      so any job assigned to a worker without a roster entry for
+  //      the day rendered as grey (off-roster) instead of navy
+  //      (scheduled) — the whole board looked uniformly grey.
+  //   3. Rostered + no job in this slot → free (open & ready).
+  //   4. Not rostered → off.
   if (state.on_leave) return "leave";
-  if (!state.rostered) return "off";
 
   // Job overlap: a job starting at scheduled_time is assumed to occupy
   // 60 minutes when no actual time_log exists; once clocked in we use
@@ -129,6 +139,8 @@ export function colourForSlot(state: WorkerDayState, slotStartMins: number): Slo
            : "scheduled";
     }
   }
+
+  if (!state.rostered) return "off";
   return "free";
 }
 
