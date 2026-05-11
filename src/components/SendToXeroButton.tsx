@@ -21,7 +21,7 @@ export default function SendToXeroButton({ jobId, alreadySent, invoiceNumber, jo
   const [showDetail, setShowDetail] = useState(false);
 
   async function send() {
-    if (!confirm("Send this job's invoice to Xero now?")) return;
+    if (!confirm("Send this job's invoice to Xero as a draft? You'll review and approve it inside Xero before it goes to the customer.")) return;
     setBusy(true);
     setError(null);
     setDetail(null);
@@ -45,9 +45,10 @@ export default function SendToXeroButton({ jobId, alreadySent, invoiceNumber, jo
     return (
       <div style={sentBoxStyle}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#15803D" }}>
-          ✓ Sent to Xero{invoiceNumber ? ` · ${invoiceNumber}` : ""}
+          ✓ Draft created in Xero{invoiceNumber ? ` · ${invoiceNumber}` : ""}
         </div>
-        <div style={{ fontSize: 11, color: "var(--gray)", marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: "var(--gray)", marginTop: 4, lineHeight: 1.5 }}>
+          Open Xero → Business → Invoices → Drafts to review and Approve.
           To re-send, clear the Xero invoice ID in the job edit form first.
         </div>
       </div>
@@ -89,9 +90,10 @@ export default function SendToXeroButton({ jobId, alreadySent, invoiceNumber, jo
           )}
         </div>
       )}
-      <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 8 }}>
+      <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 8, lineHeight: 1.5 }}>
         Builds the invoice from labour + waiting time + materials, upserts the
-        Xero contact, and posts it as <strong>AUTHORISED</strong>.
+        Xero contact, and posts it as a <strong>DRAFT</strong> — review and
+        Approve in Xero before sending to the customer.
       </div>
     </div>
   );

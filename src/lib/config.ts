@@ -11,9 +11,16 @@ export type Rates = {
   "Aged Care": number;
 };
 
+// Rates are the EX-GST amount per hour, in cents. Xero applies the
+// account's tax rate (e.g. "GST on Income" — 10%) on top, so the
+// in-app rate must not double-count GST.
+//   Private: $50.00 ex-GST → $55.00 on the invoice once Xero adds 10%
+//   NDIS / Aged Care: $56.98 — NDIS payments are GST-free, so the
+//   account in Xero should be set to GST-free or the line uses
+//   TaxType=NONE. The amount IS the headline rate.
 const DEFAULTS: Rates = {
-  Private: 5500,     // $55.00 inc-GST per hour
-  NDIS: 5698,        // $56.98 (NDIS price-guide unit rate)
+  Private: 5000,     // $50.00 ex-GST per hour
+  NDIS: 5698,        // $56.98 (NDIS price-guide unit rate, GST-free)
   "Aged Care": 5698, // same as NDIS
 };
 

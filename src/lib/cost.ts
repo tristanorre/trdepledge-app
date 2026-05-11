@@ -150,9 +150,9 @@ function billingForEntry(
   // 5-min block rounding. ceil(3/5) = 1, ceil(67/5) = 14.
   const billed_blocks = billableMinutes > 0 ? Math.ceil(billableMinutes / 5) : 0;
 
-  // Multiply-first-round-once: with rate=5500 (Private), 12 blocks
-  // gives round(12 × 5500 / 12) = 5500 — exact. No drift across a
-  // full hour.
+  // Multiply-first-round-once: with rate=5000 (Private ex-GST), 12
+  // blocks gives round(12 × 5000 / 12) = 5000 — exact. No drift across
+  // a full hour.
   const labour_cents = Math.round((billed_blocks * rate_cents) / 12);
 
   return {

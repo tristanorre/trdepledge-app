@@ -79,7 +79,11 @@ export async function sendInvoiceForJob(
     DueDate: dueDate,
     Reference: reference,
     LineItems: lineItems,
-    Status: "AUTHORISED", // ready to send; Thomas can email from Xero
+    // DRAFT lands the invoice in Xero's Draft folder so Thomas can
+    // sanity-check it (line items, tax, contact, totals) and click
+    // Approve in Xero before emailing. Switching to AUTHORISED would
+    // post it straight to Awaiting Payment with no review step.
+    Status: "DRAFT",
   };
 
   // ── 3. POST.
