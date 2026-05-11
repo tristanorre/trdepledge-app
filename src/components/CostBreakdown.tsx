@@ -25,32 +25,23 @@ export default function CostBreakdown({ cost, isComplete }: Props) {
       )}
 
       <Row label="Rate"
-           detail={`${fmtMoney(cost.rate_cents)}/hr · ${fmtMoney(Math.round(cost.rate_cents / 4))} per 15-min block · ${cost.worker_count} worker${cost.worker_count === 1 ? "" : "s"} assigned`}
+           detail={`${fmtMoney(cost.rate_cents)}/hr · ${fmtMoney(Math.round(cost.rate_cents / 12))} per 5-min block · ${cost.worker_count} worker${cost.worker_count === 1 ? "" : "s"} assigned`}
            amount={null} />
 
-      {/* Split the labour total so Thomas can see the first-hour
-          minimum and any 15-min overtime separately. The "Labour
-          subtotal" row shows the sum that hits the invoice. */}
-      {cost.first_hour_cents > 0 && (
-        <Row label="First hour minimum"
-             detail={`${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"} on site · 1h × ${fmtMoney(cost.rate_cents)}`}
-             amount={fmtMoney(cost.first_hour_cents)}
-             indent />
-      )}
-      {cost.overtime_blocks > 0 && (
-        <Row label="Overtime"
-             detail={`${cost.overtime_blocks} × 15-min block${cost.overtime_blocks === 1 ? "" : "s"} × ${fmtMoney(Math.round(cost.rate_cents / 4))}`}
-             amount={fmtMoney(cost.overtime_cents)}
-             indent />
-      )}
-      <Row label="Labour subtotal"
-           detail={`${fmtHours(cost.hours)} on site${!isComplete && cost.hours > 0 ? " (so far)" : ""}${cost.waiting_hours > 0 ? ` + ${fmtHours(cost.waiting_hours)} waiting (per worker)` : ""} · billed ${fmtHours(cost.billed_hours)}`}
+      {/* Single labour row — billed in 5-min blocks rounded up,
+          summed across started workers. No first-hour minimum. */}
+      <Row label="Labour"
+           detail={
+             cost.billed_blocks > 0
+               ? `${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"} · ${cost.billed_blocks} × 5-min block${cost.billed_blocks === 1 ? "" : "s"} · ${fmtHours(cost.hours)} on site${!isComplete ? " (so far)" : ""}${cost.waiting_hours > 0 ? ` + ${fmtHours(cost.waiting_hours)} waiting` : ""}`
+               : "Workers haven't clocked in yet"
+           }
            amount={fmtMoney(cost.labour_cents)}
            bold />
 
-      {/* Waiting time is now folded into labour (it adds to each
-          clocked-in worker's billable minutes). Show it for
-          transparency, but no separate dollar charge. */}
+      {/* Waiting time is folded into labour (added to each clocked-in
+          worker's billable minutes before the 5-min rounding). Shown
+          here for transparency, no separate dollar charge. */}
       {cost.waiting_hours > 0 && (
         <Row label="Waiting time"
              detail={`${fmtHours(cost.waiting_hours)} recorded · billed as part of labour`}

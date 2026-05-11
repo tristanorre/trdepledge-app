@@ -17,34 +17,33 @@ export type JobMaterialLine = {
 };
 
 // Billing rule (per-client-type rate, per-worker rounding):
-//   * Any part of the first hour bills as a full hour at the configured
-//     rate. So a worker who shows up for 5 minutes still costs 1h.
-//   * After the first hour, time bills in 15-minute blocks rounded UP,
-//     priced at rate_cents / 4 per block (so 4 blocks = exactly the
-//     hourly rate; no rounding drift).
-//   * A worker who never clocks in contributes nothing — assignment
-//     alone doesn't trigger the first-hour minimum.
+//   * Time bills in 5-minute blocks rounded UP, from minute 1.
+//     No minimum charge — a worker on site for 3 minutes bills 1
+//     block (5 min) at rate / 12; a worker on site for 67 minutes
+//     bills 14 blocks (70 min) at rate / 12 per block.
+//   * Per-block price = rate_cents / 12. 12 blocks of 5 minutes
+//     = 60 minutes = the full hourly rate, with no rounding drift
+//     across a full hour (we multiply first, round once).
 //   * `waiting_time_minutes` (set on the job, shared by the crew) is
 //     added to every clocked-in worker's billable minutes BEFORE the
-//     first-hour-minimum and 15-min-block rules apply. It is recorded
-//     separately for transparency (see `waiting_hours`) but billed as
-//     part of `labour_cents` — no separate `waiting_cents` charge.
-//   * `billed_hours` is the per-worker rounded-up hours summed across
-//     the crew. It's the right Quantity for Xero so that
-//       Quantity × UnitAmount === labour_cents/100
+//     5-min rounding. Recorded separately for transparency
+//     (see `waiting_hours`) but billed inside `labour_cents`.
+//   * A worker who never clocks in contributes nothing — assignment
+//     alone doesn't trigger billing.
+//   * `billed_hours` is the per-worker rounded-up hours summed
+//     across the crew. Right Quantity for Xero so
+//       Quantity × UnitAmount === labour_cents / 100
 //     exactly.
 export type CostBreakdown = {
   rate_cents: number;        // hourly rate per worker (per client type)
   worker_count: number;      // count assigned (open + closed entries)
   workers_billed: number;    // count that have actually started
   hours: number;             // ACTUAL on-site worker-hours (display)
-  billed_hours: number;      // BILLABLE worker-hours after rounding
-  first_hour_cents: number;  // sum of first-hour minimums per started worker
-  overtime_blocks: number;   // 15-min blocks across workers (after first hour)
-  overtime_cents: number;    // overtime_blocks × (rate_cents / 4)
+  billed_hours: number;      // BILLABLE worker-hours after 5-min rounding
+  billed_blocks: number;     // total 5-min blocks across the crew
   waiting_hours: number;
-  labour_cents: number;      // = first_hour_cents + overtime_cents
-  waiting_cents: number;
+  labour_cents: number;
+  waiting_cents: number;     // always 0 — waiting is folded into labour
   material_lines: Array<{
     id: string;
     name: string;
@@ -81,14 +80,11 @@ export function totalHoursFromTimeLog(time_log: TimeLog | undefined, now = new D
   return total;
 }
 
-// Per-worker billing breakdown. Returns zero on a missing/zero entry —
-// workers who never clocked in contribute nothing.
 type EntryBilling = {
   on_site_hours: number;
-  billed_hours: number;     // 0, 1.0, 1.25, 1.5, …
-  first_hour_cents: number; // 0 or rate_cents
-  overtime_blocks: number;  // count of 15-min blocks after the first hour
-  overtime_cents: number;   // round(blocks × rate / 4)
+  billed_blocks: number;     // 5-min blocks rounded up
+  billed_hours: number;      // = blocks / 12
+  labour_cents: number;
 };
 
 function billingForEntry(
@@ -98,8 +94,7 @@ function billingForEntry(
   now: Date,
 ): EntryBilling {
   const empty: EntryBilling = {
-    on_site_hours: 0, billed_hours: 0,
-    first_hour_cents: 0, overtime_blocks: 0, overtime_cents: 0,
+    on_site_hours: 0, billed_blocks: 0, billed_hours: 0, labour_cents: 0,
   };
   if (!entry?.start) return empty;
 
@@ -108,27 +103,24 @@ function billingForEntry(
   const onSiteMinutes = (end - start) / 60_000;
   if (!Number.isFinite(onSiteMinutes) || onSiteMinutes <= 0) return empty;
 
-  // Waiting time on the job is shared by the crew and added to every
-  // clocked-in worker's billable minutes. A worker who didn't clock in
-  // bails out above and never sees waiting time — assignment alone
-  // doesn't trigger billing.
+  // Waiting time is shared by the crew and added to every clocked-in
+  // worker's billable minutes. Workers who never clocked in bail out
+  // above and never see waiting time.
   const billableMinutes = onSiteMinutes + Math.max(0, waiting_minutes);
 
-  // Any part of the first hour → full first-hour minimum.
-  const first_hour_cents = rate_cents;
+  // 5-min block rounding. ceil(3/5) = 1, ceil(67/5) = 14.
+  const billed_blocks = Math.ceil(billableMinutes / 5);
 
-  // After the first hour, every 15 minutes (rounded UP) at rate/4.
-  const overtime_blocks = billableMinutes <= 60 ? 0 : Math.ceil((billableMinutes - 60) / 15);
-  // Multiply first to keep precision, round once. With rate=5698,
-  // 4 blocks × 5698 / 4 = 5698 exactly — no drift across a full hour.
-  const overtime_cents = Math.round((overtime_blocks * rate_cents) / 4);
+  // Multiply-first-round-once: with rate=5500 (Private), 12 blocks
+  // gives round(12 × 5500 / 12) = 5500 — exact. No drift across a
+  // full hour.
+  const labour_cents = Math.round((billed_blocks * rate_cents) / 12);
 
   return {
     on_site_hours: onSiteMinutes / 60,
-    billed_hours: 1 + overtime_blocks * 0.25,
-    first_hour_cents,
-    overtime_blocks,
-    overtime_cents,
+    billed_blocks,
+    billed_hours: billed_blocks / 12,
+    labour_cents,
   };
 }
 
@@ -145,31 +137,23 @@ export function calculateCost(
   const waiting_minutes = Math.max(0, job.waiting_time_minutes ?? 0);
   const waiting_hours = waiting_minutes / 60;
 
-  // Per-worker billing — only workers who've started count. Waiting
-  // time is added to each started worker's billable minutes, so it's
-  // already inside `labour_cents` and there's no separate
-  // `waiting_cents` charge.
   let workers_billed = 0;
   let hours = 0;             // actual on-site total
   let billed_hours = 0;
-  let first_hour_cents = 0;
-  let overtime_blocks = 0;
-  let overtime_cents = 0;
+  let billed_blocks = 0;
+  let labour_cents = 0;
 
   for (const entry of Object.values(time_log)) {
     const b = billingForEntry(entry, rate_cents, waiting_minutes, now);
-    if (b.first_hour_cents > 0) workers_billed += 1;
-    hours            += b.on_site_hours;
-    billed_hours     += b.billed_hours;
-    first_hour_cents += b.first_hour_cents;
-    overtime_blocks  += b.overtime_blocks;
-    overtime_cents   += b.overtime_cents;
+    if (b.billed_blocks > 0) workers_billed += 1;
+    hours         += b.on_site_hours;
+    billed_hours  += b.billed_hours;
+    billed_blocks += b.billed_blocks;
+    labour_cents  += b.labour_cents;
   }
 
-  const labour_cents = first_hour_cents + overtime_cents;
-  // Waiting is now folded into labour above; the dedicated
-  // `waiting_cents` field stays at 0 so existing rollups don't
-  // double-count.
+  // Waiting is folded into labour above; this field stays 0 so any
+  // legacy rollup doesn't double-count.
   const waiting_cents = 0;
 
   const material_lines = materials.map((m) => {
@@ -191,8 +175,7 @@ export function calculateCost(
 
   return {
     rate_cents, worker_count, workers_billed,
-    hours, billed_hours,
-    first_hour_cents, overtime_blocks, overtime_cents,
+    hours, billed_hours, billed_blocks,
     waiting_hours,
     labour_cents, waiting_cents,
     material_lines, materials_cents,
