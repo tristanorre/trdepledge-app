@@ -66,7 +66,8 @@ export type WorkerListEntry = {
 };
 
 // Row in the materials_catalogue table, shaped for the /admin/materials
-// management UI and the per-job materials picker.
+// management UI and the per-job materials picker. Materials are
+// purchased per-job; no stock tracking on the catalogue itself.
 export type MaterialCatalogueRow = {
   id: string;
   name: string;
@@ -74,7 +75,6 @@ export type MaterialCatalogueRow = {
   base_price_cents: number;
   category: string | null;
   active: boolean;
-  quantity_on_hand: number;     // numeric stock tracker (added by migration 0020)
 };
 
 export type EnquiryStatus = "new" | "contacted" | "converted" | "closed";

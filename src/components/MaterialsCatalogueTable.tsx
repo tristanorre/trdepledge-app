@@ -9,21 +9,21 @@ type Props = {
   initial: MaterialCatalogueRow[];
 };
 
-// Editable materials catalogue table. Rows show Description, Quantity,
-// Cost per unit, and Total Cost (derived = qty × cost). Add a new row
-// via the form at the top; edit inline by clicking a cell; delete a
-// row via the trash icon. Soft-hides (set active=false) are surfaced
-// as "inactive" pills so Thomas can re-activate if needed.
+// Editable materials catalogue. Each row is Description / Unit /
+// Cost-per-unit. No stock tracking — materials are purchased
+// per-job, and the per-job materials line is where Quantity and
+// Total Cost come into play. Add a row via the top form; click
+// any cell to edit inline; delete via the trash icon. Soft-hides
+// (set active=false) are surfaced as "Inactive" pills.
 
 type Draft = {
   name: string;
   unit: string;
   base_price_cents: string;   // string in the form, parsed on submit
   category: string;
-  quantity_on_hand: string;
 };
 
-const EMPTY_DRAFT: Draft = { name: "", unit: "", base_price_cents: "", category: "", quantity_on_hand: "0" };
+const EMPTY_DRAFT: Draft = { name: "", unit: "", base_price_cents: "", category: "" };
 
 export default function MaterialsCatalogueTable({ initial }: Props) {
   const router = useRouter();
@@ -52,8 +52,6 @@ export default function MaterialsCatalogueTable({ initial }: Props) {
     if (!draft.unit.trim())  return setAddError("Unit is required (e.g. m², kg, each, bag)");
     const cents = dollarsToCents(draft.base_price_cents);
     if (cents === null) return setAddError("Enter a cost per unit");
-    const qty = Number.parseFloat(draft.quantity_on_hand) || 0;
-    if (qty < 0) return setAddError("Quantity can't be negative");
 
     setAddingBusy(true);
     try {
@@ -65,7 +63,6 @@ export default function MaterialsCatalogueTable({ initial }: Props) {
           unit: draft.unit.trim(),
           base_price_cents: cents,
           category: draft.category.trim() || null,
-          quantity_on_hand: qty,
         }),
       });
       const data = await res.json();
@@ -156,17 +153,6 @@ export default function MaterialsCatalogueTable({ initial }: Props) {
               disabled={addingBusy}
             />
           </Field>
-          <Field label="Quantity on hand" htmlFor="m-qty">
-            <input
-              id="m-qty"
-              className="form-input"
-              value={draft.quantity_on_hand}
-              onChange={(e) => setDraft({ ...draft, quantity_on_hand: e.target.value })}
-              placeholder="0"
-              inputMode="decimal"
-              disabled={addingBusy}
-            />
-          </Field>
           <Field label="Category" htmlFor="m-cat">
             <input
               id="m-cat"
@@ -190,9 +176,8 @@ export default function MaterialsCatalogueTable({ initial }: Props) {
           <thead>
             <tr style={theadRow}>
               <th style={thStyle}>Description</th>
-              <th style={thStyleR}>Quantity</th>
+              <th style={thStyle}>Unit</th>
               <th style={thStyleR}>Cost / unit</th>
-              <th style={thStyleR}>Total cost</th>
               <th style={thStyle}>Category</th>
               <th style={thStyle}>Active</th>
               <th style={thStyle}></th>
@@ -200,62 +185,55 @@ export default function MaterialsCatalogueTable({ initial }: Props) {
           </thead>
           <tbody>
             {rows.length === 0 && (
-              <tr><td colSpan={7} style={emptyCellStyle}>No materials yet — add your first using the form above.</td></tr>
+              <tr><td colSpan={6} style={emptyCellStyle}>No materials yet — add your first using the form above.</td></tr>
             )}
-            {rows.map((r) => {
-              const totalCents = Math.round(r.quantity_on_hand * r.base_price_cents);
-              return (
-                <tr key={r.id} style={rowStyle(rowBusy === r.id)}>
-                  <td style={tdStyle}>
-                    <EditableText
-                      value={r.name}
-                      placeholder="(blank)"
-                      onSave={(v) => v && patchRow(r.id, { name: v })}
-                    />
-                    <div style={unitHintStyle}>per {r.unit}</div>
-                  </td>
-                  <td style={tdStyleR}>
-                    <EditableNumber
-                      value={r.quantity_on_hand}
-                      step="0.01"
-                      onSave={(n) => patchRow(r.id, { quantity_on_hand: n })}
-                    />
-                  </td>
-                  <td style={tdStyleR}>
-                    <EditableMoney
-                      cents={r.base_price_cents}
-                      onSave={(cents) => patchRow(r.id, { base_price_cents: cents })}
-                    />
-                  </td>
-                  <td style={{ ...tdStyleR, fontWeight: 800, color: "var(--navy)" }}>
-                    {fmtMoney(totalCents)}
-                  </td>
-                  <td style={tdStyle}>{r.category ?? <em style={{ color: "var(--gray)" }}>—</em>}</td>
-                  <td style={tdStyle}>
-                    <button
-                      type="button"
-                      onClick={() => patchRow(r.id, { active: !r.active })}
-                      disabled={rowBusy === r.id}
-                      style={r.active ? activePill : inactivePill}
-                    >
-                      {r.active ? "Active" : "Inactive"}
-                    </button>
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: "right" }}>
-                    <button
-                      type="button"
-                      onClick={() => deleteRow(r.id, r.name)}
-                      disabled={rowBusy === r.id}
-                      style={trashBtn}
-                      aria-label={`Delete ${r.name}`}
-                      title="Delete"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map((r) => (
+              <tr key={r.id} style={rowStyle(rowBusy === r.id)}>
+                <td style={tdStyle}>
+                  <EditableText
+                    value={r.name}
+                    placeholder="(blank)"
+                    onSave={(v) => v && patchRow(r.id, { name: v })}
+                  />
+                </td>
+                <td style={tdStyle}>
+                  <EditableText
+                    value={r.unit}
+                    placeholder="(unit)"
+                    onSave={(v) => v && patchRow(r.id, { unit: v })}
+                  />
+                </td>
+                <td style={tdStyleR}>
+                  <EditableMoney
+                    cents={r.base_price_cents}
+                    onSave={(cents) => patchRow(r.id, { base_price_cents: cents })}
+                  />
+                </td>
+                <td style={tdStyle}>{r.category ?? <em style={{ color: "var(--gray)" }}>—</em>}</td>
+                <td style={tdStyle}>
+                  <button
+                    type="button"
+                    onClick={() => patchRow(r.id, { active: !r.active })}
+                    disabled={rowBusy === r.id}
+                    style={r.active ? activePill : inactivePill}
+                  >
+                    {r.active ? "Active" : "Inactive"}
+                  </button>
+                </td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>
+                  <button
+                    type="button"
+                    onClick={() => deleteRow(r.id, r.name)}
+                    disabled={rowBusy === r.id}
+                    style={trashBtn}
+                    aria-label={`Delete ${r.name}`}
+                    title="Delete"
+                  >
+                    ✕
+                  </button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

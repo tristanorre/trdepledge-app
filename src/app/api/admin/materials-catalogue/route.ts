@@ -22,7 +22,7 @@ export async function GET(req: Request) {
 
   let q = supabase
     .from("materials_catalogue")
-    .select("id, name, unit, base_price_cents, category, active, quantity_on_hand")
+    .select("id, name, unit, base_price_cents, category, active")
     .order("category", { ascending: true, nullsFirst: true })
     .order("name");
 
@@ -38,12 +38,11 @@ export async function GET(req: Request) {
 
 // POST — create a new material.
 //
-// Body: { name, unit, base_price_cents, category?, quantity_on_hand? }
+// Body: { name, unit, base_price_cents, category? }
 //   name: text, required
 //   unit: text, required (e.g. "m²", "kg", "each", "bag")
 //   base_price_cents: int ≥ 0, required (price per unit, in cents)
 //   category: text, optional
-//   quantity_on_hand: numeric ≥ 0, optional, default 0
 export async function POST(req: Request) {
   const auth = await requireApiAdmin();
   if (auth instanceof NextResponse) return auth;
@@ -59,15 +58,11 @@ export async function POST(req: Request) {
   const unit = String(body.unit ?? "").trim();
   const priceRaw = Number(body.base_price_cents);
   const category = body.category ? String(body.category).trim() : null;
-  const qtyRaw = body.quantity_on_hand == null ? 0 : Number(body.quantity_on_hand);
 
   if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
   if (!unit) return NextResponse.json({ error: "unit is required" }, { status: 400 });
   if (!Number.isFinite(priceRaw) || priceRaw < 0 || !Number.isInteger(priceRaw)) {
     return NextResponse.json({ error: "base_price_cents must be a non-negative integer" }, { status: 400 });
-  }
-  if (!Number.isFinite(qtyRaw) || qtyRaw < 0) {
-    return NextResponse.json({ error: "quantity_on_hand must be non-negative" }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -77,7 +72,6 @@ export async function POST(req: Request) {
       unit,
       base_price_cents: priceRaw,
       category,
-      quantity_on_hand: qtyRaw,
       active: true,
     })
     .select("*")

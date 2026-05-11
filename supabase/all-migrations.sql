@@ -1,6 +1,6 @@
 -- ============================================================
 -- T.R. Depledge — full schema, paste this into Supabase SQL editor.
--- Generated 2026-05-10T23:46:37Z by scripts/build-all-migrations.sh
+-- Generated 2026-05-11T00:08:44Z by scripts/build-all-migrations.sh
 -- Idempotent: safe to re-run on a fresh project.
 -- ============================================================
 
@@ -1167,3 +1167,20 @@ begin
       check (service_frequency_days is null or service_frequency_days > 0);
   end if;
 end $$;
+
+-- ────────────────────────────────────────────────────────────
+-- 0021_drop_materials_quantity_on_hand.sql
+-- ────────────────────────────────────────────────────────────
+-- Drop the materials_catalogue.quantity_on_hand column added in 0020.
+--
+-- Reverted: Thomas buys materials per-job rather than holding stock,
+-- so a "quantity on hand" tracker isn't useful and the empty column
+-- is just visual noise on the /admin/materials page. The catalogue
+-- now stores only Description, Unit, and Cost-per-unit; quantity and
+-- total cost live on each per-job materials line (where they
+-- actually mean something).
+--
+-- Idempotent — safe whether 0020 has already been applied or not.
+
+alter table public.materials_catalogue
+  drop column if exists quantity_on_hand;

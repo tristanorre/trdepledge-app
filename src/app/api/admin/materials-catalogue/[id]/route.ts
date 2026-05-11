@@ -41,13 +41,6 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if ("category" in body) {
     patch.category = body.category ? String(body.category).trim() || null : null;
   }
-  if ("quantity_on_hand" in body) {
-    const n = Number(body.quantity_on_hand);
-    if (!Number.isFinite(n) || n < 0) {
-      return NextResponse.json({ error: "quantity_on_hand must be non-negative" }, { status: 400 });
-    }
-    patch.quantity_on_hand = n;
-  }
   if ("active" in body) patch.active = Boolean(body.active);
 
   if (Object.keys(patch).length === 0) {
