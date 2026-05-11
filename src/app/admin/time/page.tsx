@@ -19,12 +19,24 @@ function buildSlots(): number[] {
   return out;
 }
 
+// Saturated, brand-aligned palette so each status is distinguishable
+// at a glance. The previous values had too much transparency — the
+// "scheduled" blue washed white job-name labels into the navy and the
+// "available" green was almost invisible against the off-white page.
 const COLOUR_MAP: Record<SlotColour, { bg: string; border: string }> = {
-  free:        { bg: "rgba(34,134,58,0.12)",  border: "rgba(34,134,58,0.25)" },
-  scheduled:   { bg: "rgba(26,79,181,0.6)",   border: "rgba(26,79,181,0.9)" },
-  in_progress: { bg: "rgba(217,119,6,0.7)",   border: "rgba(217,119,6,0.95)" },
-  off:         { bg: "rgba(107,114,128,0.18)",border: "rgba(107,114,128,0.3)" },
-  leave:       { bg: "rgba(255,229,0,0.55)",  border: "rgba(255,229,0,0.85)" },
+  // Available: brand lime at 30% — clearly reads as "open & ready".
+  free:        { bg: "rgba(168,216,24,0.30)", border: "rgba(122,171,15,0.65)" },
+  // Scheduled: brand navy near-opaque so the white job-name labels
+  // pop with full contrast.
+  scheduled:   { bg: "rgba(10,31,61,0.88)",   border: "rgba(10,31,61,1.00)"   },
+  // In progress: saturated amber so it's distinct from blue + green.
+  in_progress: { bg: "rgba(217,119,6,0.92)",  border: "rgba(180,90,0,1.00)"   },
+  // Off roster: clearer mid-grey so it doesn't blend with the white
+  // worker-row background.
+  off:         { bg: "rgba(107,114,128,0.28)",border: "rgba(107,114,128,0.55)" },
+  // On leave: brand yellow at full saturation. Jobs are never drawn
+  // on a "leave" slot, so no contrast problem with white text.
+  leave:       { bg: "rgba(255,229,0,0.92)",  border: "rgba(180,158,0,1.00)"  },
 };
 
 export default async function TimeAllocationBoardPage({
