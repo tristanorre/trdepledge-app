@@ -7,7 +7,9 @@ const CONNECTIONS_URL = "https://api.xero.com/connections";
 
 // Scopes we need for invoicing. The "Send invoice to Xero" flow on
 // the admin job page looks up / creates the client contact, then
-// creates a draft invoice.
+// creates a draft invoice. We also need to read the chart of accounts
+// so admin can pick a valid sales account for invoice line items
+// (the hardcoded "200" default fails when an org has archived it).
 //
 // Xero rolled out granular scopes on 2 March 2026. Apps created
 // after that date can't use the old broad `accounting.transactions`
@@ -18,14 +20,22 @@ const CONNECTIONS_URL = "https://api.xero.com/connections";
 //   * accounting.transactions IS gone — replaced by
 //     accounting.invoices (covers invoices, credit notes,
 //     linked transactions, purchase orders, quotes, items)
+//   * accounting.settings.read covers /Accounts, /TaxRates,
+//     /TrackingCategories, /BrandingThemes (we only need /Accounts;
+//     the `.read` variant is enough — no need to grant write).
 //
 // Each scope without a suffix grants both read AND write; the
 // `.read` variant is for read-only when needed.
+//
+// NOTE: adding a scope here means existing connected admins need to
+// disconnect + reconnect Xero on /admin/settings to grant the new
+// permission. Old access tokens are NOT auto-upgraded.
 export const XERO_SCOPES = [
   "openid", "profile", "email",
   "offline_access",
   "accounting.contacts",
   "accounting.invoices",
+  "accounting.settings.read",
 ].join(" ");
 
 export type XeroTokens = {

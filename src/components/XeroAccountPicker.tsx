@@ -28,6 +28,8 @@ export default function XeroAccountPicker() {
   const [selected, setSelected] = useState<string>("");
   const [originalCode, setOriginalCode] = useState<string>("");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadDetail, setLoadDetail] = useState<unknown>(null);
+  const [showDetail, setShowDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -38,7 +40,10 @@ export default function XeroAccountPicker() {
       try {
         const res = await fetch("/api/admin/xero/accounts");
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error ?? "Could not load accounts");
+        if (!res.ok) {
+          if (data?.detail != null && !cancelled) setLoadDetail(data.detail);
+          throw new Error(data?.error ?? "Could not load accounts");
+        }
         if (cancelled) return;
         const list = (data.accounts ?? []) as Account[];
         setAccounts(list);
@@ -100,7 +105,24 @@ export default function XeroAccountPicker() {
 
       {loadError && (
         <div style={errBoxStyle}>
-          ⚠ {loadError}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+            <span aria-hidden="true">⚠</span>
+            <span style={{ flex: 1, lineHeight: 1.5 }}>{loadError}</span>
+          </div>
+          {loadDetail != null && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowDetail((v) => !v)}
+                style={detailToggleStyle}
+              >
+                {showDetail ? "Hide technical detail" : "Show technical detail"}
+              </button>
+              {showDetail && (
+                <pre style={detailBoxStyle}>{JSON.stringify(loadDetail, null, 2)}</pre>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -187,6 +209,21 @@ const errBoxStyle: React.CSSProperties = {
   background: "rgba(220,38,38,0.08)",
   color: "#B91C1C",
   borderRadius: 8, fontSize: 12, lineHeight: 1.5,
+};
+const detailToggleStyle: React.CSSProperties = {
+  background: "transparent", border: "none",
+  color: "#B91C1C", fontWeight: 700, fontSize: 12,
+  textDecoration: "underline", textUnderlineOffset: "3px",
+  cursor: "pointer", padding: 0,
+};
+const detailBoxStyle: React.CSSProperties = {
+  marginTop: 6, padding: 10,
+  background: "white", color: "var(--navy)",
+  border: "1px solid rgba(0,0,0,0.1)",
+  borderRadius: 6, fontSize: 11,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  overflow: "auto", maxHeight: 280,
+  whiteSpace: "pre-wrap", wordBreak: "break-word",
 };
 const muted: React.CSSProperties = {
   fontSize: 12, color: "var(--gray)",

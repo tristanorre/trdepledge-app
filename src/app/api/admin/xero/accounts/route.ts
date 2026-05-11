@@ -44,6 +44,17 @@ export async function GET() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     console.error("[xero accounts] fetch failed", { status: res.status, data });
+    // 401/403 here almost always means the access token doesn't carry
+    // the accounting.settings.read scope (added after the initial
+    // connect flow shipped). Tell Thomas to reconnect rather than
+    // showing a useless generic error.
+    if (res.status === 401 || res.status === 403) {
+      return NextResponse.json({
+        error: "Xero connection is missing permission to read your chart of accounts. Disconnect Xero above and reconnect — the new authorisation prompt will include the extra read-only scope.",
+        code: "missing_scope",
+        detail: data,
+      }, { status: 403 });
+    }
     return NextResponse.json({
       error: "Could not fetch accounts from Xero",
       detail: data,
