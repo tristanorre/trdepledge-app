@@ -19,24 +19,26 @@ function buildSlots(): number[] {
   return out;
 }
 
-// Saturated, brand-aligned palette so each status is distinguishable
-// at a glance. The previous values had too much transparency — the
-// "scheduled" blue washed white job-name labels into the navy and the
-// "available" green was almost invisible against the off-white page.
+// Solid hex palette — the previous rgba values stacked on the
+// page's off-white background and ended up muddied (the 30% lime
+// rendered as a silver-grey, the 88% navy looked black, etc).
+// Slots have no underlying white layer, so the cell background IS
+// the colour the user sees. Solid hex makes each state read the
+// same as its legend swatch regardless of what's underneath.
 const COLOUR_MAP: Record<SlotColour, { bg: string; border: string }> = {
-  // Available: brand lime at 30% — clearly reads as "open & ready".
-  free:        { bg: "rgba(168,216,24,0.30)", border: "rgba(122,171,15,0.65)" },
-  // Scheduled: brand navy near-opaque so the white job-name labels
-  // pop with full contrast.
-  scheduled:   { bg: "rgba(10,31,61,0.88)",   border: "rgba(10,31,61,1.00)"   },
-  // In progress: saturated amber so it's distinct from blue + green.
-  in_progress: { bg: "rgba(217,119,6,0.92)",  border: "rgba(180,90,0,1.00)"   },
-  // Off roster: clearer mid-grey so it doesn't blend with the white
-  // worker-row background.
-  off:         { bg: "rgba(107,114,128,0.28)",border: "rgba(107,114,128,0.55)" },
-  // On leave: brand yellow at full saturation. Jobs are never drawn
-  // on a "leave" slot, so no contrast problem with white text.
-  leave:       { bg: "rgba(255,229,0,0.92)",  border: "rgba(180,158,0,1.00)"  },
+  // Available: brand lime-pale. Reads as "open & ready" and lights
+  // up the empty grid so Thomas can see where the gaps are.
+  free:        { bg: "#D9F099", border: "#7AAB0F" },
+  // Scheduled: brand navy. White job-name labels read with full
+  // contrast on this.
+  scheduled:   { bg: "#0A1F3D", border: "#031331" },
+  // In progress: amber — distinct from navy and lime at a glance.
+  in_progress: { bg: "#F59E0B", border: "#B45A00" },
+  // Off roster: warm grey, clearly the "not working today" state.
+  off:         { bg: "#D1D5DB", border: "#9CA3AF" },
+  // On leave: brand yellow. No jobs ever sit on this so no contrast
+  // problem with the white job-name labels.
+  leave:       { bg: "#FFE500", border: "#D4BE00" },
 };
 
 export default async function TimeAllocationBoardPage({
