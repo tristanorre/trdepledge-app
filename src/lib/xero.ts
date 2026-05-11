@@ -5,24 +5,30 @@ const TOKEN_URL = "https://identity.xero.com/connect/token";
 const AUTH_URL  = "https://login.xero.com/identity/connect/authorize";
 const CONNECTIONS_URL = "https://api.xero.com/connections";
 
-// Scopes we need for invoicing. `offline_access` gets us a refresh
-// token; we keep tokens fresh from the server side.
+// Scopes we need for invoicing.
 //
-// The previous scope list included payroll.employees + payroll.timesheets,
-// which require the Xero Payroll API to be specifically enabled on
-// the developer app (it's a separate product from Accounting). For a
-// standard "Web app" registration those scopes return an invalid_scope
-// error during the OAuth handshake. Payroll integration was a deferred
-// Slice 8 item; the local /admin/hr/payroll CSV export works without
-// any Xero Payroll API access anyway.
+// Xero rolled out NEW GRANULAR SCOPES on 2 March 2026 — apps created
+// after that date only have access to the new per-resource names.
+// The old broad scopes (`accounting.contacts`, `accounting.transactions`)
+// return invalid_scope on any new app. We use the new granular ones:
+//   * accounting.contacts.read   — look up clients before invoicing
+//   * accounting.contacts.write  — create a contact if the client is
+//                                  new to Xero
+//   * accounting.invoices.read   — idempotency / status checks
+//   * accounting.invoices.write  — the actual "Send to Xero" action
 //
-// If Thomas later enables Payroll on the Xero app + subscribes to the
-// Xero Payroll AU product, add the two scopes back here.
+// `offline_access` gets us a refresh token; openid/profile/email are
+// the OIDC standard set so we can identify the connecting user.
+//
+// If Xero adds something we need later (e.g. credit notes, payments),
+// add the matching .read/.write granular scope here.
 export const XERO_SCOPES = [
   "openid", "profile", "email",
   "offline_access",
-  "accounting.contacts",
-  "accounting.transactions",
+  "accounting.contacts.read",
+  "accounting.contacts.write",
+  "accounting.invoices.read",
+  "accounting.invoices.write",
 ].join(" ");
 
 export type XeroTokens = {
