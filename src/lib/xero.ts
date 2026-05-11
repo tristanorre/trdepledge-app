@@ -5,14 +5,24 @@ const TOKEN_URL = "https://identity.xero.com/connect/token";
 const AUTH_URL  = "https://login.xero.com/identity/connect/authorize";
 const CONNECTIONS_URL = "https://api.xero.com/connections";
 
-// Scopes we need for the spec's invoice + payroll work. `offline_access`
-// gets us a refresh token; we keep tokens fresh from the server side.
+// Scopes we need for invoicing. `offline_access` gets us a refresh
+// token; we keep tokens fresh from the server side.
+//
+// The previous scope list included payroll.employees + payroll.timesheets,
+// which require the Xero Payroll API to be specifically enabled on
+// the developer app (it's a separate product from Accounting). For a
+// standard "Web app" registration those scopes return an invalid_scope
+// error during the OAuth handshake. Payroll integration was a deferred
+// Slice 8 item; the local /admin/hr/payroll CSV export works without
+// any Xero Payroll API access anyway.
+//
+// If Thomas later enables Payroll on the Xero app + subscribes to the
+// Xero Payroll AU product, add the two scopes back here.
 export const XERO_SCOPES = [
   "openid", "profile", "email",
   "offline_access",
   "accounting.contacts",
   "accounting.transactions",
-  "payroll.employees", "payroll.timesheets",
 ].join(" ");
 
 export type XeroTokens = {
