@@ -62,18 +62,24 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: "var(--navy)", lineHeight: 1.1 }}>
           Jobs
         </h1>
-        <Link
-          href="/admin/jobs/new"
-          style={{
-            background: "var(--lime)", color: "var(--navy)",
-            padding: "10px 18px", borderRadius: 8,
-            fontSize: 14, fontWeight: 800,
-            display: "inline-flex", alignItems: "center", gap: 6,
-            minHeight: 40,
-          }}
-        >
-          + New job
-        </Link>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Link
+            href="/admin/jobs/new?status=pending_review"
+            // For phone / on-site enquiries that need a quote first.
+            // Lands the job in `pending_review` so the Quote estimate
+            // panel shows on the detail page.
+            style={newQuoteBtnStyle}
+            title="For phone / on-site enquiries that need a quote before scheduling"
+          >
+            + New quote
+          </Link>
+          <Link
+            href="/admin/jobs/new"
+            style={newJobBtnStyle}
+          >
+            + New job
+          </Link>
+        </div>
       </div>
 
       <form method="GET" style={filterFormStyle}>
@@ -160,4 +166,19 @@ const emptyStyle: React.CSSProperties = {
   padding: 40,
   textAlign: "center",
   boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+};
+const newJobBtnStyle: React.CSSProperties = {
+  background: "var(--lime)", color: "var(--navy)",
+  padding: "10px 18px", borderRadius: 8,
+  fontSize: 14, fontWeight: 800,
+  display: "inline-flex", alignItems: "center", gap: 6,
+  minHeight: 40,
+};
+const newQuoteBtnStyle: React.CSSProperties = {
+  background: "white", color: "var(--navy)",
+  border: "1.5px solid var(--navy)",
+  padding: "10px 18px", borderRadius: 8,
+  fontSize: 14, fontWeight: 800,
+  display: "inline-flex", alignItems: "center", gap: 6,
+  minHeight: 40,
 };
