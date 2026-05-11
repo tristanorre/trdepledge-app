@@ -76,9 +76,27 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         error: "Xero not connected. Connect it from Settings first.",
       }, { status: 400 });
     }
+    if (result.error === "contact_lookup_failed") {
+      return NextResponse.json({
+        error: "Couldn't find or create the customer in Xero. Check the client name and try again.",
+      }, { status: 400 });
+    }
+    if (result.error === "nothing_to_invoice") {
+      return NextResponse.json({
+        error: "Nothing to invoice — no labour hours or materials.",
+      }, { status: 400 });
+    }
+    // Anything else is either an HTTP error from Xero (http_400 etc.)
+    // or our own missing-id fallback. Try to pull out the human
+    // message Xero put inside the response so Thomas sees the actual
+    // problem (e.g. "Account code 200 is not valid", "Invalid tax
+    // type", "Contact has no name") instead of a generic banner.
+    const human = humaniseXeroError(result);
     console.error("[xero invoice] failed", result);
     return NextResponse.json({
-      error: "Could not send to Xero", detail: result.error,
+      error: human,
+      code: result.error,
+      detail: result.detail,
     }, { status: 502 });
   }
 
@@ -92,4 +110,42 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     invoice_id: result.invoice_id,
     invoice_number: result.invoice_number,
   });
+}
+
+// Xero's failure payloads are deeply nested. This helper digs through
+// the common shapes and returns the most useful single-line message.
+//
+// Validation errors look like:
+//   { Elements: [{ ValidationErrors: [{ Message: "Account code ..." }] }] }
+// OAuth errors look like:
+//   { Type: "InvalidGrant", Title: "Authentication Unsuccessful" }
+// Generic API errors look like:
+//   { Type: "...", Message: "..." }
+function humaniseXeroError(result: { error: string; detail?: unknown }): string {
+  // Special-case the auth-expired shape — when the refresh token is stale
+  // Thomas needs to re-connect, not retry.
+  if (result.error === "http_401") {
+    return "Xero connection expired. Disconnect and re-connect via Settings, then try again.";
+  }
+
+  const d = result.detail as Record<string, unknown> | undefined;
+  if (d && typeof d === "object") {
+    // Validation errors — most common when the chart of accounts /
+    // tax type / item code doesn't match the org. We want the first
+    // ValidationError.Message string.
+    const elements = d.Elements as Array<Record<string, unknown>> | undefined;
+    const firstEl = Array.isArray(elements) ? elements[0] : undefined;
+    const validationErrors = firstEl?.ValidationErrors as Array<{ Message?: string }> | undefined;
+    const firstMsg = validationErrors?.[0]?.Message;
+    if (typeof firstMsg === "string" && firstMsg.trim()) {
+      return `Xero rejected the invoice: ${firstMsg}`;
+    }
+    // Generic top-level Message / Title.
+    const topMsg = (typeof d.Message === "string" && d.Message)
+      || (typeof d.Title === "string" && d.Title)
+      || "";
+    if (topMsg) return `Xero error: ${topMsg}`;
+  }
+  // Last resort — surface our internal code so the user can search.
+  return `Could not send to Xero (${result.error}). Check the server logs for the full Xero response.`;
 }
