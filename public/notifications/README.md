@@ -8,7 +8,7 @@ referenced by absolute URL (NEXTAUTH_URL + path) when the push is sent.
 ## Files
 
 - **`super-darrell-15h.png`** — "Super Darrell — 15 Hours Worked"
-  weekly celebration. Fires once per Mon–Fri week when Darrell Wood
+  weekly celebration. Fires once per Mon–Fri week when Darrell Woods
   crosses 15 net hours. See `src/lib/milestones.ts` for the trigger.
 
 ## Image specs

@@ -30,7 +30,12 @@ type WeeklyMilestone = {
 const WEEKLY_MILESTONES: WeeklyMilestone[] = [
   {
     key: "super_darrell_15h",
-    workerNameMatch: "darrell",
+    // Full surname kept in the matcher so a future "Darrell <other>"
+    // worker doesn't trigger this celebration by accident. Substring,
+    // case-insensitive — "Darrell Woods", "darrell woods", "DARRELL
+    // WOODS" all match. If his row is stored with a middle initial
+    // ("Darrell J. Woods") the substring breaks; widen this if so.
+    workerNameMatch: "darrell woods",
     thresholdHours: 15,
     title: "🏈 SUPER DARRELL!",
     message: "Darrell has crushed 15 hours this week — absolute legend. Go Roos!",
