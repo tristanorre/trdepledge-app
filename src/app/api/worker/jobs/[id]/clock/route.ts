@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireApiWorker, requireSupabase } from "@/lib/api-auth";
 import type { JobStatus } from "@/lib/types";
 import type { BreakEntry, TimeEntry } from "@/lib/cost";
+import { checkWeeklyMilestones } from "@/lib/milestones";
 
 export const runtime = "nodejs";
 
@@ -142,6 +143,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     console.error("[worker clock] update", updateErr);
     return NextResponse.json({ error: "Could not update job" }, { status: 500 });
   }
+
+  // Best-effort milestone check (e.g. "Super Darrell 15h" weekly
+  // celebration push). Awaited so the lambda doesn't get killed mid-
+  // request on Vercel, but never throws — internal errors are logged.
+  await checkWeeklyMilestones(supabase, session.user.id);
+
   return NextResponse.json({ job: updated });
 }
 

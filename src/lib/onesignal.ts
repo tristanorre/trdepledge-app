@@ -13,6 +13,11 @@ type Payload = {
   title: string;
   message: string;
   deep_link?: string;
+  // Optional rich-media image. MUST be an absolute HTTPS URL — OneSignal
+  // fetches it server-side before delivery, so a relative path or a
+  // localhost URL silently degrades to a text-only notification. Used
+  // for celebratory notifications (e.g. weekly milestone pushes).
+  image_url?: string;
 };
 
 export async function sendPush(
@@ -52,6 +57,14 @@ export async function sendPush(
     contents: { en: payload.message },
   };
   if (payload.deep_link) body.url = payload.deep_link;
+  if (payload.image_url) {
+    // Each platform has its own field for the rich image. We populate
+    // all three so the image renders consistently whether the worker
+    // is on Android, iOS, or a Chrome web push (PWA).
+    body.big_picture = payload.image_url;         // Android
+    body.chrome_web_image = payload.image_url;    // Web push (Chrome / Edge / desktop PWA)
+    body.ios_attachments = { id1: payload.image_url };
+  }
 
   try {
     const res = await fetch(ONESIGNAL_API, {

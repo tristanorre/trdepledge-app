@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import type { JobStatus } from "@/lib/types";
+import { checkWeeklyMilestones } from "@/lib/milestones";
 
 export const runtime = "nodejs";
 
@@ -174,6 +175,11 @@ export async function PATCH(req: Request, { params }: Ctx) {
     console.error("[admin time edit] update", updateErr);
     return NextResponse.json({ error: "Could not update job" }, { status: 500 });
   }
+
+  // An admin edit changes the affected worker's weekly hours, so the
+  // milestone check needs to run for that worker (not the admin who
+  // pressed save). Best-effort — never throws.
+  await checkWeeklyMilestones(supabase, worker_id);
 
   revalidatePath(`/admin/jobs/${params.id}`);
   return NextResponse.json({ job: updated });
