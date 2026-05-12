@@ -24,7 +24,17 @@ export default async function WorkerLayout({ children }: { children: React.React
     <div style={shellStyle}>
       <header style={topBarStyle}>
         <Link href="/worker" style={{ display: "inline-flex", alignItems: "center" }}>
-          <Image src="/logo.svg" alt="T.R. Depledge" width={690} height={390} style={{ height: 36, width: "auto" }} />
+          <Image
+            src="/images/logo-v16.png"
+            alt="T.R. Depledge Gardening & Maintenance"
+            width={1053}
+            height={1052}
+            priority
+            // v16 mark is square; bump height to 44px so the navy
+            // badge reads cleanly at thumbnail size on the worker
+            // top bar. Width auto-derives from the aspect ratio.
+            style={{ height: 44, width: "auto" }}
+          />
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link

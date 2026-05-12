@@ -14,7 +14,14 @@ export default function ResetPasswordPage() {
     <div style={shellStyle}>
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-          <Image src="/logo.svg" alt="T.R. Depledge" width={690} height={390} priority style={{ width: "100%", maxWidth: 280, height: "auto" }} />
+          <Image
+            src="/images/logo-v16.png"
+            alt="T.R. Depledge Gardening & Maintenance"
+            width={1053}
+            height={1052}
+            priority
+            style={{ width: "100%", maxWidth: 180, height: "auto" }}
+          />
         </div>
 
         <h1 style={{ fontFamily: "var(--font-display)", fontSize: 24, color: "var(--navy)", textAlign: "center", marginBottom: 8 }}>

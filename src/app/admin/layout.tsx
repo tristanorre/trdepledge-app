@@ -29,7 +29,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div style={shellStyle}>
       <header style={topBarStyle}>
         <Link href="/admin" style={logoLinkStyle}>
-          <Image src="/logo.svg" alt="T.R. Depledge" width={690} height={390} style={{ height: 36, width: "auto" }} />
+          <Image
+            src="/images/logo-v16.png"
+            alt="T.R. Depledge Gardening & Maintenance"
+            width={1053}
+            height={1052}
+            priority
+            // The v16 mark is square; the previous /logo.svg was a wide
+            // green wordmark at 690×390. Rendering it at the same height
+            // (36px) made the square badge look like a postage stamp, so
+            // bump to 44px in the navy app top bar. Width auto-derives.
+            style={{ height: 44, width: "auto" }}
+          />
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link

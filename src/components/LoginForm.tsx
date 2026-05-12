@@ -78,7 +78,16 @@ export default function LoginForm() {
   return (
     <div style={styles.shell}>
       <div style={styles.logoWrap}>
-        <Image src="/logo.svg" alt="T.R. Depledge" width={690} height={390} priority style={{ width: "100%", maxWidth: 280, height: "auto" }} />
+        <Image
+          src="/images/logo-v16.png"
+          alt="T.R. Depledge Gardening & Maintenance"
+          width={1053}
+          height={1052}
+          priority
+          // Square v16 mark — cap at 200px so the form below it still
+          // sits above the fold on a phone.
+          style={{ width: "100%", maxWidth: 200, height: "auto" }}
+        />
       </div>
 
       <div style={styles.tabs} role="tablist">
