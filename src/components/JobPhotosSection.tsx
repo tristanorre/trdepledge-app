@@ -6,9 +6,11 @@ import imageCompression from "browser-image-compression";
 
 type Photo = { path: string; url: string };
 
+export type PhotoKind = "before" | "after" | "receipts";
+
 type Props = {
   jobId: string;
-  kind: "before" | "after";
+  kind: PhotoKind;
   initialPhotos: Photo[];
   canCapture: boolean;
   canDelete: boolean;
@@ -22,7 +24,19 @@ const COMPRESSION_OPTS = {
   fileType: "image/jpeg" as const,
 };
 
-const KIND_LABEL = { before: "Before", after: "After" } as const;
+const KIND_LABEL: Record<PhotoKind, string> = {
+  before: "Before",
+  after: "After",
+  receipts: "Receipts",
+};
+// Wording on the capture button — "Add before / Add after" reads
+// naturally, but "Add receipts" is awkward. Use "Add receipt" for that
+// kind and the bare kind for the others.
+const CAPTURE_NOUN: Record<PhotoKind, string> = {
+  before: "before",
+  after: "after",
+  receipts: "receipt",
+};
 
 export default function JobPhotosSection({
   jobId, kind, initialPhotos, canCapture, canDelete,
@@ -125,7 +139,7 @@ export default function JobPhotosSection({
               disabled={uploading}
               style={captureBtn}
             >
-              {uploading ? (progress ?? "Uploading…") : `📷 Add ${kind}`}
+              {uploading ? (progress ?? "Uploading…") : `📷 Add ${CAPTURE_NOUN[kind]}`}
             </button>
           </>
         )}
@@ -133,7 +147,7 @@ export default function JobPhotosSection({
 
       {photos.length === 0 ? (
         <div style={{ color: "var(--gray)", fontSize: 14, padding: "8px 0" }}>
-          No {kind} photos yet.
+          No {CAPTURE_NOUN[kind]} photos yet.
         </div>
       ) : (
         <div style={gridStyle}>

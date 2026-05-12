@@ -5,10 +5,14 @@ import { PHOTOS_BUCKET } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-// POST multipart/form-data: { kind: "before" | "after", file: <image> }
+// POST multipart/form-data: { kind: "before" | "after" | "receipts", file: <image> }
 //
 // Auth — admin can upload to any job; worker can upload only to a job
 // they're assigned to. Path format: jobs/<job-id>/<kind>/<random>.<ext>
+//
+// "receipts" is the same shape as before/after — added so workers can
+// capture proof-of-purchase for on-site material runs without texting
+// Thomas the photo.
 //
 // Compression is the client's job (browser-image-compression keeps each
 // upload under ~1MB per spec). The server enforces a hard 5MB ceiling
@@ -33,8 +37,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (!form) return NextResponse.json({ error: "Invalid form data" }, { status: 400 });
 
   const kind = form.get("kind");
-  if (kind !== "before" && kind !== "after") {
-    return NextResponse.json({ error: "kind must be 'before' or 'after'" }, { status: 400 });
+  if (kind !== "before" && kind !== "after" && kind !== "receipts") {
+    return NextResponse.json({ error: "kind must be 'before', 'after', or 'receipts'" }, { status: 400 });
   }
 
   const file = form.get("file");

@@ -47,6 +47,12 @@ export type Job = {
   materials_used: unknown[];
   photos_before: string[];
   photos_after: string[];
+  // Receipt photos uploaded by the field worker when they buy
+  // materials on the job (Bunnings runs, hardware-store fittings).
+  // Same Storage layout as before/after; kept in a separate array so
+  // the admin cost view can cross-check uploaded receipts against the
+  // catalogue line items at invoice time.
+  photos_receipts: string[];
   // Per-worker clock entries, keyed by user id. Each entry is at most
   // one start + optional end (workers can't clock in twice without
   // clocking out first). The `time_log` column is jsonb in Postgres,

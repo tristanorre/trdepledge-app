@@ -78,9 +78,10 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     assignedWorkers = (ws ?? []) as WorkerListEntry[];
   }
 
-  const [beforePhotos, afterPhotos] = await Promise.all([
+  const [beforePhotos, afterPhotos, receiptPhotos] = await Promise.all([
     signPhotoUrls(supabase, j.photos_before ?? []),
     signPhotoUrls(supabase, j.photos_after ?? []),
+    signPhotoUrls(supabase, j.photos_receipts ?? []),
   ]);
 
   const cost = calculateCost(j, materials, rates);
@@ -170,6 +171,21 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           jobId={j.id}
           kind="after"
           initialPhotos={afterPhotos}
+          canCapture={true}
+          canDelete={true}
+        />
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 20 }}>
+        {/* Receipts sit next to Materials because they correspond:
+            the receipts are proof-of-purchase for the lines Thomas
+            enters below. Admin can capture too (e.g. Thomas paid a
+            supplier directly), and can delete if a worker uploads
+            the wrong photo. */}
+        <JobPhotosSection
+          jobId={j.id}
+          kind="receipts"
+          initialPhotos={receiptPhotos}
           canCapture={true}
           canDelete={true}
         />

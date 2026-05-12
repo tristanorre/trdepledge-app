@@ -4,10 +4,11 @@ import { PHOTOS_BUCKET } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
-// DELETE { path: string, kind: "before" | "after" }
+// DELETE { path: string, kind: "before" | "after" | "receipts" }
 // Admin-only. Removes the file from Storage AND drops it from the
 // jobs.photos_<kind> array. Worker-side deletion isn't supported — if a
-// worker uploads a bad photo, they ask Thomas to remove it.
+// worker uploads a bad photo (or a receipt they meant for a different
+// job), they ask Thomas to remove it.
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireApiAdmin();
   if (auth instanceof NextResponse) return auth;
@@ -22,8 +23,8 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
   const path = String(body.path ?? "");
   const kind = body.kind;
   if (!path) return NextResponse.json({ error: "path required" }, { status: 400 });
-  if (kind !== "before" && kind !== "after") {
-    return NextResponse.json({ error: "kind must be 'before' or 'after'" }, { status: 400 });
+  if (kind !== "before" && kind !== "after" && kind !== "receipts") {
+    return NextResponse.json({ error: "kind must be 'before', 'after', or 'receipts'" }, { status: 400 });
   }
   // Defence against path traversal — the path must be inside this job.
   const expectedPrefix = `jobs/${params.id}/${kind}/`;
@@ -31,7 +32,10 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     return NextResponse.json({ error: "Path does not belong to this job" }, { status: 400 });
   }
 
-  const column = kind === "before" ? "photos_before" : "photos_after";
+  const column =
+    kind === "before" ? "photos_before"
+    : kind === "after" ? "photos_after"
+    : "photos_receipts";
   const { data: job, error: readErr } = await supabase
     .from("jobs")
     .select(column)

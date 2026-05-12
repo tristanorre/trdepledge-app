@@ -8,6 +8,7 @@ import NotesThread from "@/components/NotesThread";
 import ClockInOutButton from "@/components/ClockInOutButton";
 import WaitingTimePicker from "@/components/WaitingTimePicker";
 import JobPhotosSection from "@/components/JobPhotosSection";
+import ReceiptsCapture from "@/components/ReceiptsCapture";
 import type { Job } from "@/lib/types";
 import { signPhotoUrls } from "@/lib/storage";
 
@@ -47,9 +48,10 @@ export default async function WorkerJobDetailPage({ params }: { params: { id: st
   if (!data) notFound();
   const j = data as Job;
 
-  const [beforePhotos, afterPhotos] = await Promise.all([
+  const [beforePhotos, afterPhotos, receiptPhotos] = await Promise.all([
     signPhotoUrls(supabase, j.photos_before ?? []),
     signPhotoUrls(supabase, j.photos_after ?? []),
+    signPhotoUrls(supabase, j.photos_receipts ?? []),
   ]);
 
   return (
@@ -132,6 +134,10 @@ export default async function WorkerJobDetailPage({ params }: { params: { id: st
           canCapture={true}
           canDelete={false}
         />
+      </div>
+
+      <div style={{ ...cardStyle, marginTop: 16 }}>
+        <ReceiptsCapture jobId={j.id} initialReceipts={receiptPhotos} />
       </div>
 
       <div style={{ ...cardStyle, marginTop: 16 }}>
