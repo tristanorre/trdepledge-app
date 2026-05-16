@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
-import { mondayOfWeek, addDaysISO, todayISO, fmtWeekRange, fmtDayShort } from "@/lib/dates";
-import { hoursForEntry, type TimeLog } from "@/lib/cost";
-import type { Job } from "@/lib/types";
+import { mondayOfWeek, addDaysISO, todayISO, fmtWeekRange, weekDates } from "@/lib/dates";
+import PayrollHoursEditor from "@/components/PayrollHoursEditor";
 
 export const dynamic = "force-dynamic";
 
-type WorkerRow = { id: string; name: string };
+type Worker = { id: string; name: string };
 
+// Payroll review screen. Source of truth: `worker_paid_hours` table —
+// populated by the roster editor and overridable here. Clock-in/out
+// time is NOT used for pay; it only affects what the client is
+// charged via the cost engine.
 export default async function PayrollPage({
   searchParams,
 }: {
@@ -16,50 +19,43 @@ export default async function PayrollPage({
 }) {
   await requireAdmin();
   const supabase = getServiceClient();
+
   const weekStart = mondayOfWeek(
     /^\d{4}-\d{2}-\d{2}$/.test(searchParams.week_start ?? "") ? searchParams.week_start! : todayISO()
   );
-  const weekEnd = addDaysISO(weekStart, 6);
+  const dates = weekDates(weekStart);
+  const weekEndISO = dates[6];
 
-  let totals: Array<{ worker_id: string; name: string; hours: number; jobs: number }> = [];
-  let workers: WorkerRow[] = [];
-  let jobs: Job[] = [];
+  let workers: Worker[] = [];
+  let hoursLookup: Record<string, string> = {};
 
   if (supabase) {
-    const [{ data: ws }, { data: js }] = await Promise.all([
-      supabase.from("users").select("id, name").eq("role", "worker").eq("active", true).order("name"),
-      supabase.from("jobs").select("*")
-        .gte("date", weekStart).lte("date", weekEnd)
-        .eq("status", "completed"),
+    const [{ data: ws }, { data: hs }] = await Promise.all([
+      supabase.from("users")
+        .select("id, name")
+        .eq("role", "worker")
+        .eq("active", true)
+        .order("name"),
+      supabase.from("worker_paid_hours")
+        .select("worker_id, work_date, hours")
+        .gte("work_date", dates[0])
+        .lte("work_date", weekEndISO),
     ]);
-    workers = (ws ?? []) as WorkerRow[];
-    jobs = (js ?? []) as Job[];
-
-    const workerName = new Map(workers.map((w) => [w.id, w.name]));
-    const map = new Map<string, { worker_id: string; name: string; hours: number; jobs: number }>();
-    for (const j of jobs) {
-      const log = (j.time_log ?? {}) as TimeLog;
-      if (!j.date) continue;
-      for (const wid of j.assigned_worker_ids ?? []) {
-        const h = hoursForEntry(log[wid]);
-        if (h <= 0) continue;
-        const name = workerName.get(wid);
-        if (!name) continue;
-        const cur = map.get(wid) ?? { worker_id: wid, name, hours: 0, jobs: 0 };
-        cur.hours = Math.round((cur.hours + h) * 1000) / 1000;
-        cur.jobs += 1;
-        map.set(wid, cur);
-      }
+    workers = (ws ?? []) as Worker[];
+    const rawHours = (hs ?? []) as Array<{ worker_id: string; work_date: string; hours: number }>;
+    for (const r of rawHours) {
+      hoursLookup[`${r.worker_id}|${r.work_date}`] = String(r.hours);
     }
-    totals = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   return (
     <div>
       <Link href="/admin/hr" style={backLinkStyle}>← HR</Link>
       <h1 style={titleStyle}>Payroll</h1>
-      <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 20 }}>
-        Hours from <strong>completed</strong> jobs only — clock in/out drives this. Export the CSV for Xero or your accountant&apos;s spreadsheet.
+      <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 20, lineHeight: 1.5 }}>
+        Paid hours per worker × day. Pre-filled from the <Link href={`/admin/hr/roster?week_start=${weekStart}`} style={{ color: "var(--navy)", fontWeight: 700 }}>Roster</Link> —
+        override any cell here before exporting to Xero. Clock-in/out doesn&apos;t affect these numbers
+        (it only drives what the client is charged).
       </p>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
@@ -72,68 +68,11 @@ export default async function PayrollPage({
         </div>
       </div>
 
-      {totals.length === 0 ? (
-        <div style={emptyStyle}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>⏱</div>
-          <div style={{ fontWeight: 700, color: "var(--navy)", marginBottom: 6 }}>No completed jobs this week.</div>
-          <div style={{ color: "var(--gray)", fontSize: 14 }}>
-            Hours appear once workers clock in and out on jobs scheduled in this date range.
-          </div>
-        </div>
-      ) : (
-        <>
-          <h2 style={sectionHeader}>Totals</h2>
-          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
-            {totals.map((t) => (
-              <li key={t.worker_id} style={totalRow}>
-                <div>
-                  <div style={{ fontWeight: 800, color: "var(--navy)", fontSize: 15 }}>{t.name}</div>
-                  <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 2 }}>
-                    {t.jobs} job{t.jobs === 1 ? "" : "s"}
-                  </div>
-                </div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: 22, color: "var(--navy)" }}>
-                  {t.hours.toFixed(2)}h
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <h2 style={sectionHeader}>Detail</h2>
-          <div style={{ background: "white", borderRadius: 14, border: "1px solid rgba(0,0,0,0.06)", overflowX: "auto" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={th}>Worker</th>
-                  <th style={th}>Date</th>
-                  <th style={th}>Client</th>
-                  <th style={{ ...th, textAlign: "right" }}>Hours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {jobs.flatMap((j) => {
-                  const log = (j.time_log ?? {}) as TimeLog;
-                  if (!j.date) return [];
-                  return (j.assigned_worker_ids ?? []).map((wid) => {
-                    const h = hoursForEntry(log[wid]);
-                    if (h <= 0) return null;
-                    const name = workers.find((w) => w.id === wid)?.name;
-                    if (!name) return null;
-                    return (
-                      <tr key={`${j.id}-${wid}`}>
-                        <td style={td}>{name}</td>
-                        <td style={td}>{fmtDayShort(j.date!)}</td>
-                        <td style={td}>{j.client_name}</td>
-                        <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{h.toFixed(2)}</td>
-                      </tr>
-                    );
-                  });
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
+      <PayrollHoursEditor
+        workers={workers}
+        weekDates={dates}
+        initialHours={hoursLookup}
+      />
 
       <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
         <a
@@ -147,8 +86,9 @@ export default async function PayrollPage({
         </button>
       </div>
 
-      <div style={{ marginTop: 16, padding: 12, background: "rgba(255, 229, 0, 0.16)", borderRadius: 10, fontSize: 12, color: "#5C4F00" }}>
-        <strong>Direct Xero Payroll push</strong> needs each worker mapped to their Xero employee record (incl. TFN, super, leave types). The CSV is the bridge until that mapping is set up — paste it into Xero&apos;s Timesheet bulk-import.
+      <div style={{ marginTop: 16, padding: 12, background: "rgba(255, 229, 0, 0.16)", borderRadius: 10, fontSize: 12, color: "#5C4F00", lineHeight: 1.5 }}>
+        <strong>Direct Xero Payroll push</strong> needs each worker mapped to their Xero employee record (TFN, super,
+        leave types). The CSV is the bridge until that mapping is set up — paste it into Xero&apos;s Timesheet bulk-import.
       </div>
     </div>
   );
@@ -156,19 +96,6 @@ export default async function PayrollPage({
 
 const backLinkStyle: React.CSSProperties = { fontSize: 13, color: "var(--gray)", marginBottom: 8, display: "inline-block" };
 const titleStyle: React.CSSProperties = { fontFamily: "var(--font-display)", fontSize: 28, color: "var(--navy)", lineHeight: 1.1, marginBottom: 4 };
-const sectionHeader: React.CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: "1.5px", textTransform: "uppercase", color: "var(--gray)", marginBottom: 10 };
-const totalRow: React.CSSProperties = {
-  display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
-  background: "white", borderRadius: 12, padding: 14,
-  border: "1px solid rgba(0,0,0,0.06)",
-};
-const tableStyle: React.CSSProperties = { width: "100%", borderCollapse: "collapse", minWidth: 480 };
-const th: React.CSSProperties = {
-  fontSize: 11, fontWeight: 800, letterSpacing: "1px", textTransform: "uppercase",
-  color: "var(--gray)", padding: "12px 14px", textAlign: "left",
-  borderBottom: "1px solid var(--gray-light)", background: "var(--off)",
-};
-const td: React.CSSProperties = { padding: "10px 14px", borderBottom: "1px solid var(--gray-light)", fontSize: 14 };
 const navBtn: React.CSSProperties = {
   background: "var(--off)", color: "var(--navy)",
   border: "none", borderRadius: 8,
@@ -187,8 +114,4 @@ const comingSoonBtn: React.CSSProperties = {
   border: "none", borderRadius: 10,
   padding: "12px 20px", fontSize: 14, fontWeight: 700,
   cursor: "not-allowed", minHeight: 44,
-};
-const emptyStyle: React.CSSProperties = {
-  background: "white", borderRadius: 16, padding: 32,
-  textAlign: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
 };
