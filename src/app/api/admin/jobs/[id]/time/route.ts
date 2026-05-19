@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import type { JobStatus } from "@/lib/types";
 import { checkWeeklyMilestones } from "@/lib/milestones";
+import { rollForwardRecurringJob, justCompleted } from "@/lib/recurring-jobs";
 
 export const runtime = "nodejs";
 
@@ -180,6 +181,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
   // milestone check needs to run for that worker (not the admin who
   // pressed save). Best-effort — never throws.
   await checkWeeklyMilestones(supabase, worker_id);
+
+  // Recurring-client roll-forward: if Thomas's time edit just flipped
+  // the job to "completed" (final missing clock-out filled in), create
+  // the next recurring visit. No-op if not a recurring client.
+  if (justCompleted(job.status, patch.status as string | undefined)) {
+    await rollForwardRecurringJob(supabase, params.id);
+  }
 
   revalidatePath(`/admin/jobs/${params.id}`);
   return NextResponse.json({ job: updated });

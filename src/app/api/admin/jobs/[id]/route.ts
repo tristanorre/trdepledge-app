@@ -4,6 +4,7 @@ import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { sendPush } from "@/lib/onesignal";
 import { after as runAfter } from "@/lib/after";
 import type { ClientType, JobStatus } from "@/lib/types";
+import { rollForwardRecurringJob, justCompleted } from "@/lib/recurring-jobs";
 
 export const runtime = "nodejs";
 
@@ -118,10 +119,12 @@ export async function PATCH(req: Request, { params }: Ctx) {
   }
 
   // Read previous state for assignment diff (so we only push to
-  // newly-added workers, not everyone on the job again).
+  // newly-added workers, not everyone on the job again) and status
+  // transition detection (to fire the recurring-client roll-forward
+  // when this PATCH is the one that flipped the job to completed).
   const { data: prev } = await supabase
     .from("jobs")
-    .select("assigned_worker_ids, scheduled_time, date")
+    .select("assigned_worker_ids, scheduled_time, date, status")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -162,6 +165,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
       message: `${data.client_name} · ${data.date ?? "no date"}${data.scheduled_time ? ` · ${String(data.scheduled_time).slice(0, 5)}` : ""}`,
       deep_link: `/worker/jobs/${data.id}`,
     }, supabase));
+  }
+
+  // Recurring-client roll-forward: when Thomas flips a recurring
+  // client's job to "completed" via the Edit form, queue the next
+  // visit at the next cadence. Best-effort — never blocks the PATCH.
+  if (prev && justCompleted(prev.status, data.status)) {
+    await rollForwardRecurringJob(supabase, params.id);
   }
 
   // Bust the App Router cache so the next visit to the detail page or

@@ -3,6 +3,7 @@ import { requireApiWorker, requireSupabase } from "@/lib/api-auth";
 import type { JobStatus } from "@/lib/types";
 import type { BreakEntry, TimeEntry } from "@/lib/cost";
 import { checkWeeklyMilestones } from "@/lib/milestones";
+import { rollForwardRecurringJob, justCompleted } from "@/lib/recurring-jobs";
 
 export const runtime = "nodejs";
 
@@ -148,6 +149,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // celebration push). Awaited so the lambda doesn't get killed mid-
   // request on Vercel, but never throws — internal errors are logged.
   await checkWeeklyMilestones(supabase, session.user.id);
+
+  // Recurring-client roll-forward: if this clock-out was the final
+  // one that just flipped the job to "completed", and the client is
+  // on a recurring schedule, create the next visit + bump the
+  // client's next_service_due. Best-effort — same pattern as the
+  // milestone check above.
+  if (justCompleted(job.status, patch.status as string | undefined)) {
+    await rollForwardRecurringJob(supabase, params.id);
+  }
 
   return NextResponse.json({ job: updated });
 }
