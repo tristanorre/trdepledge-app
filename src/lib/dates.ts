@@ -1,9 +1,33 @@
-// Date helpers used by Schedule, Time Allocation Board, and Roster.
+// Date helpers used by Schedule, Time Allocation Board, Roster, and
+// Payroll.
 //
-// All ISO dates are YYYY-MM-DD strings to match Postgres `date` round-tripping.
-// Times are HH:MM (24h). Everything is local time — Australia doesn't have
-// half-hour offsets that bite scheduling, and the team works on the
-// ground, so "today" means "the day on Thomas's phone".
+// All ISO dates are YYYY-MM-DD strings to match Postgres `date`
+// round-tripping. Times are HH:MM (24h). Everything is **local time
+// in Adelaide** — the team works on the ground in South Australia,
+// so "today" must mean "the day on Thomas's phone", not UTC.
+//
+// IMPORTANT — server timezone gotcha:
+//
+// Vercel serverless lambdas run in UTC by default. Plain
+// `new Date().getDate()` returns the UTC day, which between
+// midnight UTC and ~09:30 ACST is the PREVIOUS day relative to
+// Adelaide. The roster page was anchored to the wrong week any
+// time it was loaded before mid-morning local — hours were saved
+// against last week's Monday, then disappeared on the payroll page
+// later in the day when the UTC clock caught up.
+//
+// Fix: every "what is today" / "what local date is this instant"
+// helper goes through Intl.DateTimeFormat with timeZone set to
+// Australia/Adelaide. That makes the code TZ-independent — works
+// the same whether the server is in UTC, Sydney, or Helsinki, and
+// regardless of whether DST is in effect (Adelaide observes DST;
+// the formatter handles the offset for you).
+//
+// Setting `TZ=Australia/Adelaide` as a Vercel env var would also
+// fix this, but we prefer the explicit code path so the app stays
+// correct even if the env var gets removed.
+
+const APP_TIMEZONE = "Australia/Adelaide";
 
 export const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 export type DayKey = (typeof DAY_KEYS)[number];
@@ -13,27 +37,75 @@ export const DAY_LABELS: Record<DayKey, string> = {
   fri: "Fri", sat: "Sat", sun: "Sun",
 };
 
-/** YYYY-MM-DD for the local date (no UTC weirdness). */
+// Cached formatter — re-creating Intl.DateTimeFormat on every call is
+// expensive in a hot loop and we use it on every server render.
+const isoDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: APP_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+// "en-CA" formats as YYYY-MM-DD natively, which means we don't have
+// to re-assemble parts. But we still iterate the parts array because
+// formatToParts is the only TZ-aware API that lets us pull the local
+// day/month/year out of a Date instant cleanly.
+const isoPartsFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: APP_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** YYYY-MM-DD for the date in Adelaide-local time. TZ-safe. */
 export function toISODate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  // formatToParts returns numeric parts as strings already padded.
+  const parts = isoPartsFormatter.formatToParts(d);
+  let y = "", m = "", day = "";
+  for (const p of parts) {
+    if (p.type === "year")  y = p.value;
+    if (p.type === "month") m = p.value;
+    if (p.type === "day")   day = p.value;
+  }
   return `${y}-${m}-${day}`;
 }
 
+/** Current date in Adelaide as YYYY-MM-DD. */
 export function todayISO(): string {
-  return toISODate(new Date());
+  return isoDateFormatter.format(new Date());
 }
 
-/** Parse YYYY-MM-DD as a local date (NOT UTC). */
+/** Parse YYYY-MM-DD as a LOCAL date at noon Adelaide time.
+ *  Noon (not midnight) is deliberate — it sidesteps DST transitions:
+ *  on the day DST starts/ends, midnight either doesn't exist or
+ *  exists twice, and naive parsers can shift the day by ±1 hour
+ *  which then shifts the weekday. Noon is always unambiguous.
+ *
+ *  This builds the Date so that subsequent getDay/getDate calls
+ *  return the day Adelaide sees on the calendar, regardless of where
+ *  the server is. */
 export function fromISODate(iso: string): Date {
   const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d);
+  // Build a date that represents noon in Adelaide on that date. We do
+  // this in two steps because there's no constructor for "this local
+  // date in this timezone": create a UTC date that we know is the
+  // same calendar date in Adelaide (noon UTC always falls on the
+  // same Adelaide date), then trust subsequent local-getters.
+  //
+  // Adelaide is UTC+9:30 (or +10:30 with DST). Noon UTC = 21:30 or
+  // 22:30 Adelaide — same calendar day. So `new Date(y, m-1, d, 12)`
+  // (a local noon construction) is safe regardless of server TZ
+  // because noon ± any reasonable TZ offset stays on the same date.
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
 }
 
-/** Monday of the week containing `iso`. (ISO 8601: weeks start Monday.) */
+/** Monday of the ISO week containing `iso`. */
 export function mondayOfWeek(iso: string): string {
   const d = fromISODate(iso);
+  // d.getDay() works on the local representation of the Date object
+  // — but because the Date is built at noon-local, the local day
+  // matches Adelaide's calendar day (server TZ shift is much smaller
+  // than 12h so the noon anchor doesn't cross midnight).
   const dayIdx = (d.getDay() + 6) % 7; // 0 = Mon, 6 = Sun
   d.setDate(d.getDate() - dayIdx);
   return toISODate(d);
@@ -58,27 +130,49 @@ export function weekDates(monday: string): string[] {
   return DAY_KEYS.map((_, i) => addDaysISO(monday, i));
 }
 
+// Formatters used for display — all explicitly Adelaide-zoned so
+// the "Mon 19 May" header matches what Thomas's phone shows.
+const dayShortFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeZone: APP_TIMEZONE,
+  weekday: "short", day: "numeric", month: "short",
+});
+const dayLongFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeZone: APP_TIMEZONE,
+  weekday: "long", day: "numeric", month: "long", year: "numeric",
+});
+
 /** "Mon 5 May" style. */
 export function fmtDayShort(iso: string): string {
-  const d = fromISODate(iso);
-  return d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+  return dayShortFormatter.format(fromISODate(iso));
 }
 
 /** "Monday, 5 May 2026" style — for headlines. */
 export function fmtDayLong(iso: string): string {
-  const d = fromISODate(iso);
-  return d.toLocaleDateString("en-AU", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
+  return dayLongFormatter.format(fromISODate(iso));
 }
 
 /** "5–11 May 2026" style — for week ranges. */
 export function fmtWeekRange(monday: string): string {
   const start = fromISODate(monday);
   const end = fromISODate(addDaysISO(monday, 6));
-  const sameMonth = start.getMonth() === end.getMonth();
-  const startStr = start.toLocaleDateString("en-AU", { day: "numeric", month: sameMonth ? undefined : "short" });
-  const endStr = end.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  // Pull the Adelaide-local month for each end so we can suppress the
+  // start-month when both ends fall in the same month.
+  const startMonth = new Intl.DateTimeFormat("en-AU", {
+    timeZone: APP_TIMEZONE, month: "numeric",
+  }).format(start);
+  const endMonth = new Intl.DateTimeFormat("en-AU", {
+    timeZone: APP_TIMEZONE, month: "numeric",
+  }).format(end);
+  const sameMonth = startMonth === endMonth;
+  const startStr = new Intl.DateTimeFormat("en-AU", {
+    timeZone: APP_TIMEZONE,
+    day: "numeric",
+    ...(sameMonth ? {} : { month: "short" }),
+  }).format(start);
+  const endStr = new Intl.DateTimeFormat("en-AU", {
+    timeZone: APP_TIMEZONE,
+    day: "numeric", month: "short", year: "numeric",
+  }).format(end);
   return `${startStr}–${endStr}`;
 }
 
