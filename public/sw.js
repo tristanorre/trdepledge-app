@@ -11,7 +11,12 @@
 
 importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
 
-const VERSION = "v1";
+// Bump this any time we ship a change to a cache-first asset (logo,
+// fonts, anything in /images that's referenced by name). The activate
+// handler drops any cache key whose suffix doesn't match — so a bump
+// here = clean cache for everyone on their next visit.
+//   v1 -> v2: new shield-and-galah logo-v16.png replaces the old badge.
+const VERSION = "v2";
 const SHELL_CACHE = `trdepledge-shell-${VERSION}`;
 const PAGE_CACHE  = `trdepledge-pages-${VERSION}`;
 
