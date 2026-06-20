@@ -81,8 +81,8 @@ export default function LoginForm() {
         <Image
           src="/images/logo-v16.png"
           alt="T.R. Depledge Gardening & Maintenance"
-          width={1053}
-          height={1052}
+          width={800}
+          height={800}
           priority
           // Square v16 mark — cap at 200px so the form below it still
           // sits above the fold on a phone.

@@ -16,8 +16,8 @@ export default function ForgotPasswordPage() {
           <Image
             src="/images/logo-v16.png"
             alt="T.R. Depledge Gardening & Maintenance"
-            width={1053}
-            height={1052}
+            width={800}
+            height={800}
             priority
             style={{ width: "100%", maxWidth: 180, height: "auto" }}
           />
