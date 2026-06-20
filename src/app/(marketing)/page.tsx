@@ -11,6 +11,28 @@ const MARQUEE_TERMS = [
   "Yard Revamps", "Instant Lawns", "Aged Care", "Police Checked", "Landscaping",
 ];
 
+// Canonical 10-item service list — order and names must match
+// /services and the footer Services column. If you reorder/rename
+// here, update those two as well.
+type ServicePreview = {
+  icon: string;
+  name: string;
+  desc: string;
+  tag?: { label: string; variant?: "lime" | "blue" };
+};
+const SERVICES_PREVIEW: ServicePreview[] = [
+  { icon: "🌱", name: "Lawn mowing & edging",       desc: "Regular mowing and crisp edges. Quick visits to keep your lawn looking sharp through every season." },
+  { icon: "🌿", name: "Garden maintenance",          desc: "Regular lawn mowing, edging, weeding, pruning and general upkeep. We keep your garden looking its best year round.", tag: { label: "Most Popular", variant: "lime" } },
+  { icon: "✂️", name: "Hedge & small tree trimming", desc: "Overgrown hedges and small trees safely trimmed and shaped. Neat finish, quick turnaround." },
+  { icon: "🍂", name: "Garden clean-ups",            desc: "One-off seasonal clean-ups or pre-sale garden tidy-ups. We clear overgrown areas and remove green waste." },
+  { icon: "🏡", name: "Yard revamps",                desc: "Complete outdoor transformations — new gardens, gravel paths, raised beds and landscaping tailored to your vision and budget." },
+  { icon: "⛏️", name: "Landscaping",                 desc: "Gravel, mulch, soil, garden borders, planting and more. Quality materials, quality finish, every time." },
+  { icon: "🌾", name: "Instant lawn installs",       desc: "Supply and lay instant turf for a lush, green lawn. We prepare, lay and finish — ready to enjoy immediately." },
+  { icon: "♿", name: "NDIS yard maintenance",       desc: "Police-checked, trusted staff experienced in supporting NDIS participants with garden and yard maintenance as part of their care plan.", tag: { label: "NDIS Approved", variant: "blue" } },
+  { icon: "❤️", name: "Aged care garden support",    desc: "Friendly, reliable garden support for elderly clients and aged care facilities across the Copper Coast.", tag: { label: "Aged Care" } },
+  { icon: "🎁", name: "Gift cards",                  desc: "Give the gift of a beautiful garden. T.R. Depledge gift cards are perfect for a family member, neighbour, or anyone who deserves a little outdoor help." },
+];
+
 function HeroMarquee() {
   // Render each list twice so the CSS `translateX(-50%)` keyframe yields
   // a seamless loop (the second copy slides into where the first started).
@@ -92,7 +114,7 @@ export default function HomePage() {
                   T.R. Depledge started as one young local&apos;s idea, inspired by two grandmothers with beautiful gardens — and a determination to build something real.
                 </Reveal>
                 <Reveal as="p">
-                  Thomas Depledge founded the business on 30 November 2020 while juggling university study and two jobs. What began as a one-day-a-week operation has grown into a full-time team serving over 30 regular clients across the Copper Coast — including the Moonta Bay Lifestyle Estate.
+                  Thomas Depledge founded the business on 30 November 2020 while juggling university study and two jobs. What began as a one-day-a-week operation has grown into a five-person local team serving 30+ regular clients across the Copper Coast. The team maintains the grounds at Moonta Bay Lifestyle Estate.
                 </Reveal>
               </div>
               <Reveal className="milestone-row">
@@ -125,40 +147,20 @@ export default function HomePage() {
             <Reveal as="h2" className="section-title">Everything Your Garden<br />and Yard <em style={{ color: "var(--lime)" }}>Needs</em></Reveal>
             <Reveal as="p" className="section-lead">Professional gardening and maintenance across the Copper Coast and Yorke Peninsula. Honest pricing, quality results.</Reveal>
           </div>
+          {/* Canonical 10-item service list — same order as /services
+              and the footer. Update SERVICES_PREVIEW below if the
+              canonical list changes. */}
           <div className="services-grid">
-            <Reveal className="service-card">
-              <div className="service-icon">🌿</div>
-              <div className="service-name">Garden Maintenance</div>
-              <div className="service-desc">Regular lawn mowing, edging, weeding, pruning and general upkeep. We keep your garden looking its best year round.</div>
-              <span className="service-tag lime">Most Popular</span>
-            </Reveal>
-            <Reveal delay={1} className="service-card">
-              <div className="service-icon">🌱</div>
-              <div className="service-name">Instant Lawn Installs</div>
-              <div className="service-desc">Supply and lay instant turf for a lush, green lawn. We prepare, lay and finish — ready for you to enjoy immediately.</div>
-            </Reveal>
-            <Reveal delay={2} className="service-card">
-              <div className="service-icon">🏡</div>
-              <div className="service-name">Yard Revamps</div>
-              <div className="service-desc">Complete outdoor transformations — new gardens, gravel paths, raised beds and landscaping tailored to your vision and budget.</div>
-            </Reveal>
-            <Reveal delay={1} className="service-card">
-              <div className="service-icon">⛏️</div>
-              <div className="service-name">Landscaping</div>
-              <div className="service-desc">Gravel, mulch, soil, garden borders, planting and more. Quality materials, quality finish, every time.</div>
-            </Reveal>
-            <Reveal delay={2} className="service-card">
-              <div className="service-icon">♿</div>
-              <div className="service-name">NDIS Support</div>
-              <div className="service-desc">Police-checked, trusted staff experienced in supporting NDIS participants with garden and yard maintenance as part of their care plan.</div>
-              <span className="service-tag blue">NDIS Approved</span>
-            </Reveal>
-            <Reveal delay={3} className="service-card">
-              <div className="service-icon">❤️</div>
-              <div className="service-name">Aged Care</div>
-              <div className="service-desc">Friendly, reliable garden support for elderly clients and aged care facilities across the Copper Coast.</div>
-              <span className="service-tag">Aged Care</span>
-            </Reveal>
+            {SERVICES_PREVIEW.map((s, i) => (
+              <Reveal key={s.name} delay={((i % 3) + 1) as 1 | 2 | 3} className="service-card">
+                <div className="service-icon">{s.icon}</div>
+                <div className="service-name">{s.name}</div>
+                <div className="service-desc">{s.desc}</div>
+                {s.tag && (
+                  <span className={`service-tag${s.tag.variant ? " " + s.tag.variant : ""}`}>{s.tag.label}</span>
+                )}
+              </Reveal>
+            ))}
           </div>
           <Reveal style={{ textAlign: "center", marginTop: 48 }}>
             <Link href="/services" className="btn btn-outline btn-lg">View All Services →</Link>

@@ -44,13 +44,21 @@ export default function Footer() {
 
           <div>
             <div className="footer-col-title">Services</div>
+            {/* Canonical 10-item service list — same order and names
+                as the homepage preview and /services tiles. Each
+                points at /contact?service=… via the existing pattern
+                so the dropdown pre-fills. */}
             <ul className="footer-links">
-              <li><Link href="/services">Garden Maintenance</Link></li>
-              <li><Link href="/services">Instant Lawn Installs</Link></li>
-              <li><Link href="/services">Yard Revamps</Link></li>
-              <li><Link href="/services">Landscaping</Link></li>
-              <li><Link href="/ndis-aged-care">NDIS Support</Link></li>
-              <li><Link href="/ndis-aged-care">Aged Care</Link></li>
+              <li><Link href="/contact?service=Garden%20Maintenance">Lawn mowing & edging</Link></li>
+              <li><Link href="/contact?service=Garden%20Maintenance">Garden maintenance</Link></li>
+              <li><Link href="/contact?service=Hedge%20%26%20Tree%20Trimming">Hedge & small tree trimming</Link></li>
+              <li><Link href="/contact?service=Garden%20Clean-Up">Garden clean-ups</Link></li>
+              <li><Link href="/contact?service=Yard%20Revamp">Yard revamps</Link></li>
+              <li><Link href="/contact?service=Landscaping">Landscaping</Link></li>
+              <li><Link href="/contact?service=Instant%20Lawn%20Install">Instant lawn installs</Link></li>
+              <li><Link href="/contact?service=NDIS%20Garden%20Support">NDIS yard maintenance</Link></li>
+              <li><Link href="/contact?service=Aged%20Care%20Services">Aged care garden support</Link></li>
+              <li><Link href="/contact?service=Gift%20Card%20Enquiry">Gift cards</Link></li>
             </ul>
           </div>
 

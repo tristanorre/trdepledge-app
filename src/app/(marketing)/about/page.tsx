@@ -6,7 +6,7 @@ import BookCta from "@/components/BookCta";
 export const metadata: Metadata = {
   title: "About Us",
   description:
-    "Founded in Wallaroo on 30 November 2020 by Thomas Depledge. A five-person local team servicing 30+ regular clients and 80+ homes at Moonta Bay Lifestyle Estate.",
+    "Founded in Wallaroo on 30 November 2020 by Thomas Depledge. A five-person local team servicing 30+ regular clients. Maintains the grounds at Moonta Bay Lifestyle Estate.",
 };
 
 const TEAM = [

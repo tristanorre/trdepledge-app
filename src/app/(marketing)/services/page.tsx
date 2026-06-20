@@ -23,19 +23,43 @@ type Service = {
   enquiry: string;
 };
 
+// Canonical service list — single source of truth for /services tiles,
+// homepage cards and the footer Services column. Order and names must
+// stay aligned across all three (drift previously caused inconsistent
+// claims across pages).
 const SERVICES: Service[] = [
   {
+    icon: "🌱",
+    name: "Lawn mowing & edging",
+    desc: "Regular mowing and crisp edges. Quick visits to keep your lawn looking sharp through every season.",
+    enquiry: "Garden Maintenance",
+  },
+  {
     image: "/images/Services/service-garden-maintenance.png",
-    imageAlt: "Garden Maintenance — regular lawn mowing and upkeep",
-    name: "Garden Maintenance",
-    desc: "Our most popular service. Regular lawn mowing, edging, weeding, hedge trimming, pruning and general garden upkeep. We keep your outdoor space looking great all year — without you lifting a finger.",
+    imageAlt: "Garden maintenance — regular lawn mowing and upkeep",
+    name: "Garden maintenance",
+    desc: "Our most popular service. Regular lawn mowing, edging, weeding, pruning and general garden upkeep. We keep your outdoor space looking great all year — without you lifting a finger.",
     tag: { label: "Most Popular", variant: "lime" },
     enquiry: "Garden Maintenance",
   },
   {
+    image: "/images/Services/service-hedge-trimming.png",
+    imageAlt: "Hedge & small tree trimming — neat hedges and small trees",
+    name: "Hedge & small tree trimming",
+    desc: "Overgrown hedges and small trees safely trimmed and shaped. Neat finish, quick turnaround, no mess left behind.",
+    enquiry: "Hedge & Tree Trimming",
+  },
+  {
+    image: "/images/Services/service-garden-cleanups.png",
+    imageAlt: "Garden clean-ups — clearing green waste and overgrowth",
+    name: "Garden clean-ups",
+    desc: "One-off seasonal clean-ups or pre-sale garden tidy-ups. We clear overgrown areas, remove green waste, and leave your property looking its best.",
+    enquiry: "Garden Clean-Up",
+  },
+  {
     image: "/images/Services/service-yard-revamps.png",
-    imageAlt: "Yard Revamps — paving, paths and outdoor transformations",
-    name: "Yard Revamps",
+    imageAlt: "Yard revamps — paving, paths and outdoor transformations",
+    name: "Yard revamps",
     desc: "Complete outdoor transformations — new gardens, gravel paths, raised beds and landscaping tailored to your vision and budget.",
     enquiry: "Yard Revamp",
   },
@@ -43,52 +67,37 @@ const SERVICES: Service[] = [
     image: "/images/Services/service-landscaping.png",
     imageAlt: "Landscaping — soil, mulch and planting",
     name: "Landscaping",
-    desc: "From gravel and mulch to soil preparation, border edging, planting and feature installation — we bring quality materials and skilled hands to every landscaping project, big or small.",
+    desc: "From gravel and mulch to soil preparation, border edging, planting and feature installation — quality materials and skilled hands on every project, big or small.",
     enquiry: "Landscaping",
   },
   {
-    image: "/images/Services/service-hedge-trimming.png",
-    imageAlt: "Hedge & Tree Trimming — neat hedges and small trees",
-    name: "Hedge & Tree Trimming",
-    desc: "Overgrown hedges and trees? Our team safely trims and shapes all types of hedging and small trees, leaving your property neat, tidy, and well-maintained.",
-    enquiry: "Hedge & Tree Trimming",
-  },
-  {
-    image: "/images/Services/service-garden-cleanups.png",
-    imageAlt: "Garden Clean-Ups — raking leaves and clearing green waste",
-    name: "Garden Clean-Ups",
-    desc: "One-off seasonal clean-ups or pre-sale garden tidy-ups. We clear overgrown areas, remove green waste, and leave your property looking its best — fast and efficiently.",
-    enquiry: "Garden Clean-Up",
+    icon: "🌿",
+    name: "Instant lawn installs",
+    desc: "Supply and lay instant turf for a lush, green lawn. We prepare, lay and finish — ready for you to enjoy immediately.",
+    enquiry: "Instant Lawn Install",
   },
   {
     image: "/images/Services/service-ndis.png",
-    imageAlt: "NDIS Garden Support — supporting NDIS participants",
-    name: "NDIS Garden Support",
+    imageAlt: "NDIS yard maintenance — supporting NDIS participants",
+    name: "NDIS yard maintenance",
     desc: "All our staff are police-checked and experienced in supporting NDIS participants. We understand the documentation and invoicing requirements — making the process simple for clients and plan managers alike.",
     tag: { label: "NDIS Approved", variant: "blue" },
     enquiry: "NDIS Garden Support",
   },
   {
     image: "/images/Services/service-aged-care.png",
-    imageAlt: "Aged Care Services — garden support for elderly clients",
-    name: "Aged Care Services",
-    desc: "Caring, reliable garden support for elderly clients and aged care facilities. We're proud partners of the Moonta Bay Lifestyle Estate and support Home Care Package and Support at Home clients across the region.",
+    imageAlt: "Aged care garden support — for elderly clients",
+    name: "Aged care garden support",
+    desc: "Caring, reliable garden support for elderly clients and aged care facilities. Maintains the grounds at Moonta Bay Lifestyle Estate, and supports Home Care Package and Support at Home clients across the region.",
     tag: { label: "Aged Care" },
     enquiry: "Aged Care Services",
   },
   {
     image: "/images/Services/service-gift-cards.png",
-    imageAlt: "Gift Cards — give the gift of a beautiful garden",
-    name: "Gift Cards",
+    imageAlt: "Gift cards — give the gift of a beautiful garden",
+    name: "Gift cards",
     desc: "Give the gift of a beautiful garden. T.R. Depledge gift cards are perfect for a family member, neighbour, or anyone who deserves a little outdoor help. Available in any amount.",
     enquiry: "Gift Card Enquiry",
-  },
-  {
-    image: "/images/service-landscaping.jpg",
-    imageAlt: "Professional landscaping work by T.R. Depledge",
-    name: "Premium Landscaping",
-    desc: "Bespoke landscape design and installation — turn your outdoor area into a feature you'll love coming home to. Site visit, quote and full project management.",
-    enquiry: "Landscaping",
   },
 ];
 

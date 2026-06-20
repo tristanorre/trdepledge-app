@@ -29,7 +29,7 @@ export default function GalleryPage() {
             Before & After <em>Gallery</em>
           </h1>
           <p className="section-lead light" style={{ margin: "0 auto" }}>
-            Real results for real clients across the Copper Coast. More photos added as we build our portfolio.
+            Real results for real clients across the Copper Coast.
           </p>
         </div>
       </section>
@@ -41,12 +41,6 @@ export default function GalleryPage() {
             <div className="gallery-overlay"><span>{g.caption}</span></div>
           </div>
         ))}
-        <div className="gallery-item">
-          <div className="gallery-placeholder" style={{ minHeight: 250 }}>
-            <div className="ph-icon">📸</div>
-            <span>Before & after photos<br />coming soon</span>
-          </div>
-        </div>
       </div>
 
       <BookCta
