@@ -33,7 +33,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             src="/images/logo-v16.png"
             alt="T.R. Depledge Gardening & Maintenance"
             width={800}
-            height={727}
+            height={800}
             priority
             // The v16 mark is square; the previous /logo.svg was a wide
             // green wordmark at 690×390. Rendering it at the same height

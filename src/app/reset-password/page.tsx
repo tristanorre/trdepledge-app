@@ -18,7 +18,7 @@ export default function ResetPasswordPage() {
             src="/images/logo-v16.png"
             alt="T.R. Depledge Gardening & Maintenance"
             width={800}
-            height={727}
+            height={800}
             priority
             style={{ width: "100%", maxWidth: 180, height: "auto" }}
           />

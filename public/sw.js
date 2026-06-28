@@ -18,7 +18,9 @@ importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
 //   v1 -> v2: new shield-and-galah logo-v16.png replaces the old badge.
 //   v2 -> v3: actual T.R. Depledge brand logo (lime TR + galah +
 //             yellow ribbon "GARDENING & MAINTENANCE" + "EST. 2020").
-const VERSION = "v3";
+//   v3 -> v4: v3 had been built from the wrong source file (a TAJJPI
+//             mark) — corrected to the real TR Depledge artwork.
+const VERSION = "v4";
 const SHELL_CACHE = `trdepledge-shell-${VERSION}`;
 const PAGE_CACHE  = `trdepledge-pages-${VERSION}`;
 
