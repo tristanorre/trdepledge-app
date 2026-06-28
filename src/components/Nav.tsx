@@ -5,12 +5,12 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-// Marketing nav — v16 design. Tall navy bar (110px) with logo on the
-// left, phone widget directly after the logo, centred uppercase links,
-// and a "Website by TAJJPI" credit pinned to the far right. The logo
-// lives in a 240px-wide slot but its image extends downward past the
-// nav baseline so it sits visually anchored against the yellow hero
-// below — that overhang is the v16 signature move.
+// Marketing nav — v16 design. Tall navy bar (110px). Left → right:
+// logo, centred uppercase nav links, phone widget, "Website by TAJJPI"
+// credit pinned to the far right. The logo lives in a 240px-wide slot
+// but its image extends downward past the nav baseline so it sits
+// visually anchored against the yellow hero below — that overhang is
+// the v16 signature move.
 //
 // "Our Work" links to /gallery (existing). "Reviews" routes to a stub
 // (added in this branch) so the link isn't broken.
@@ -52,21 +52,6 @@ export default function Nav() {
           />
         </Link>
 
-        {/* Phone widget — sits directly after the logo so the CTA is the
-            first thing in reading order after the brand. Moved from the
-            far right per request; the credit block now lives there. */}
-        <a href="tel:0474844204" className="v16-phone" aria-label="Call Thomas on 0474 844 204">
-          <span className="v16-phone-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-            </svg>
-          </span>
-          <span className="v16-phone-text">
-            <span className="v16-phone-num">0474 844 204</span>
-            <span className="v16-phone-sub">CALL THOMAS TODAY</span>
-          </span>
-        </a>
-
         <ul className="v16-navlinks">
           {links.map((l) => (
             <li key={l.href}>
@@ -79,6 +64,21 @@ export default function Nav() {
             </li>
           ))}
         </ul>
+
+        {/* Phone widget — sits between the nav links (ending with
+            Contact) and the TAJJPI credit. CTA still prominent right
+            of centre; credit takes the far-right slot. */}
+        <a href="tel:0474844204" className="v16-phone" aria-label="Call Thomas on 0474 844 204">
+          <span className="v16-phone-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+            </svg>
+          </span>
+          <span className="v16-phone-text">
+            <span className="v16-phone-num">0474 844 204</span>
+            <span className="v16-phone-sub">CALL THOMAS TODAY</span>
+          </span>
+        </a>
 
         {/* Credit — three stacked lines pinned to the far right of the
             nav. Links out to tajjpi.com.au (rel=noopener since it's a
