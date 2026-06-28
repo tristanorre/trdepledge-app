@@ -8,11 +8,17 @@ export const dynamic = "force-dynamic";
 
 // Status buttons — Thomas wanted these in place of a status dropdown.
 // "Pending allocation" and "Scheduled" are both *virtual* filters
-// across the same DB status='scheduled':
-//   pending_allocation  → status='scheduled' AND no workers assigned
-//   scheduled           → status='scheduled' AND workers assigned
-// That keeps them mutually exclusive so a job only ever shows in one
-// of the two buckets. Everything else maps 1:1 to the DB status enum.
+// across the same DB status='scheduled', split by whether the job
+// has been placed on the calendar yet:
+//   pending_allocation  → status='scheduled' AND date IS NULL
+//                         (job exists but hasn't been allocated to a
+//                          day on the schedule yet — Thomas's queue)
+//   scheduled           → status='scheduled' AND date IS NOT NULL
+//                         (job is on the calendar, ready to run)
+// Mutually exclusive — a job only ever shows in one of the two
+// buckets. "Allocation" here means allocated to the schedule, not
+// allocated to workers. Workers can be added/removed at any later
+// stage without changing the bucket.
 type StatusKey =
   | "pending_allocation"
   | "scheduled"
@@ -84,12 +90,15 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
     // Status filter — virtual or literal.
     switch (activeStatus) {
       case "pending_allocation":
-        // Postgres uuid array literal — '{}' is the empty-array form,
-        // accepted by PostgREST as the comparison value.
-        q = q.eq("status", "scheduled").eq("assigned_worker_ids", "{}");
+        // Job exists in 'scheduled' status but no date has been set —
+        // Thomas's queue of jobs to slot onto the calendar.
+        q = q.eq("status", "scheduled").is("date", null);
         break;
       case "scheduled":
-        q = q.eq("status", "scheduled").neq("assigned_worker_ids", "{}");
+        // 'scheduled' status AND a date is set — already on the
+        // calendar, ready to be worked. Workers may or may not be
+        // assigned; that's a separate concern from scheduling.
+        q = q.eq("status", "scheduled").not("date", "is", null);
         break;
       case "all":
         // No status constraint.
