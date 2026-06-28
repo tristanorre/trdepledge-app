@@ -100,19 +100,19 @@ export default async function WorkerJobsPage() {
         </div>
       )}
 
-      <Section title="Today" jobs={todayJobs} emptyHint="Nothing scheduled for today." />
-      <Section title="Upcoming" jobs={upcoming} />
-      {undated.length > 0 && <Section title="Not yet scheduled" jobs={undated} />}
-
       {/* My equipment — what Thomas has allocated to this worker, and
-          when. Sits between the actionable job sections and the Past
-          jobs reference so it acts as a "kit check" before the workday. */}
+          when. Pinned to the top above the job sections so it doesn't
+          get lost at the bottom of a long jobs list — acts as a "kit
+          check" at the start of every visit to the page. */}
       <AllocatedKitSection
         assets={allocatedAssets}
         dateByAssetId={dateByAssetId}
         imageUrlByPath={imageUrlByPath}
       />
 
+      <Section title="Today" jobs={todayJobs} emptyHint="Nothing scheduled for today." />
+      <Section title="Upcoming" jobs={upcoming} />
+      {undated.length > 0 && <Section title="Not yet scheduled" jobs={undated} />}
       {past.length > 0 && <Section title="Past" jobs={past.slice(0, 10)} />}
     </div>
   );
