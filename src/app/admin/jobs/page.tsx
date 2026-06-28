@@ -6,21 +6,29 @@ import type { Job, ClientType, WorkerListEntry } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-// Status buttons — Thomas wanted these in place of a status dropdown.
-// "Pending allocation" and "Scheduled" are both *virtual* filters
-// across the same DB status='scheduled', split by whether the job
-// has been placed on the calendar yet:
-//   pending_allocation  → status='scheduled' AND date IS NULL
-//                         (job exists but hasn't been allocated to a
-//                          day on the schedule yet — Thomas's queue)
-//   scheduled           → status='scheduled' AND date IS NOT NULL
-//                         (job is on the calendar, ready to run)
-// Mutually exclusive — a job only ever shows in one of the two
-// buckets. "Allocation" here means allocated to the schedule, not
-// allocated to workers. Workers can be added/removed at any later
-// stage without changing the bucket.
+// Status buttons — a row replacing the previous status dropdown.
+// Three virtual filters split the underlying status='scheduled' rows
+// by how far through the planning workflow each job is:
+//
+//   pending_allocation  status='scheduled' AND date IS NULL
+//                       (job exists but hasn't been allocated to a
+//                        day on the calendar — Thomas's queue)
+//
+//   staff_allocation    status='scheduled' AND date IS NOT NULL
+//                                          AND assigned_worker_ids='{}'
+//                       (on the calendar but no workers picked yet —
+//                        ready for crew assignment)
+//
+//   scheduled           status='scheduled' AND date IS NOT NULL
+//                                          AND assigned_worker_ids<>'{}'
+//                       (date + crew assigned — fully ready to run)
+//
+// Mutually exclusive — a job lives in exactly one of the three. Other
+// buttons map 1:1 to the DB status enum. "All statuses" skips the
+// filter entirely.
 type StatusKey =
   | "pending_allocation"
+  | "staff_allocation"
   | "scheduled"
   | "in_progress"
   | "completed"
@@ -30,6 +38,7 @@ type StatusKey =
 
 const STATUS_BUTTONS: { key: StatusKey; label: string }[] = [
   { key: "pending_allocation", label: "Pending allocation" },
+  { key: "staff_allocation",   label: "Staff allocation" },
   { key: "scheduled",          label: "Scheduled" },
   { key: "in_progress",        label: "In progress" },
   { key: "completed",          label: "Completed" },
@@ -49,18 +58,18 @@ type SearchParams = { status?: string; type?: string; date?: string; worker?: st
 
 function resolveStatus(raw: string | undefined): StatusKey {
   const allowed: StatusKey[] = [
-    "pending_allocation", "scheduled", "in_progress",
+    "pending_allocation", "staff_allocation", "scheduled", "in_progress",
     "completed", "pending_review", "cancelled", "all",
   ];
   if (raw && (allowed as string[]).includes(raw)) return raw as StatusKey;
   // No status param = default to "Pending allocation" — Thomas's
-  // most actionable list (jobs needing workers picked).
+  // most actionable list (jobs without a calendar date yet).
   return "pending_allocation";
 }
 
 // Preserve any non-status filters when building a button's href, so
-// clicking a status button doesn't blow away the type/worker/date
-// already in the URL.
+// clicking a status button doesn't blow away type/worker/date already
+// in the URL.
 function buildHref(key: StatusKey, params: SearchParams): string {
   const sp = new URLSearchParams();
   sp.set("status", key);
@@ -78,6 +87,18 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
   let jobs: Job[] = [];
   let workers: WorkerListEntry[] = [];
   const dbConfigured = !!supabase;
+  // Counts shown on each button. Always present (filled with zeros
+  // when the DB isn't configured) so the UI layout is stable.
+  const counts: Record<StatusKey, number> = {
+    pending_allocation: 0,
+    staff_allocation: 0,
+    scheduled: 0,
+    in_progress: 0,
+    completed: 0,
+    pending_review: 0,
+    cancelled: 0,
+    all: 0,
+  };
 
   if (supabase) {
     let q = supabase
@@ -87,21 +108,19 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
       .order("scheduled_time", { ascending: true, nullsFirst: false })
       .limit(200);
 
-    // Status filter — virtual or literal.
     switch (activeStatus) {
       case "pending_allocation":
-        // Job exists in 'scheduled' status but no date has been set —
-        // Thomas's queue of jobs to slot onto the calendar.
         q = q.eq("status", "scheduled").is("date", null);
         break;
+      case "staff_allocation":
+        // Scheduled on the calendar but no workers picked yet.
+        q = q.eq("status", "scheduled").not("date", "is", null).eq("assigned_worker_ids", "{}");
+        break;
       case "scheduled":
-        // 'scheduled' status AND a date is set — already on the
-        // calendar, ready to be worked. Workers may or may not be
-        // assigned; that's a separate concern from scheduling.
-        q = q.eq("status", "scheduled").not("date", "is", null);
+        // Calendar date + at least one worker assigned. Fully ready.
+        q = q.eq("status", "scheduled").not("date", "is", null).neq("assigned_worker_ids", "{}");
         break;
       case "all":
-        // No status constraint.
         break;
       default:
         q = q.eq("status", activeStatus);
@@ -111,16 +130,40 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
     if (searchParams.date) q = q.eq("date", searchParams.date);
     if (searchParams.worker) q = q.contains("assigned_worker_ids", [searchParams.worker]);
 
-    const [{ data: js, error }, { data: ws }] = await Promise.all([
+    // Per-button counts — eight parallel head-only count queries.
+    // Cheap (each is a single index scan) and keeps the UI honest
+    // about how big each bucket is without polling later.
+    const headCount = () => supabase.from("jobs").select("id", { count: "exact", head: true });
+
+    const [
+      { data: js, error },
+      { data: ws },
+      cPending, cStaff, cSched, cInProg, cDone, cReview, cCanc, cAll,
+    ] = await Promise.all([
       q,
-      // Admins included so Thomas appears in the worker filter dropdown
-      // alongside the field crew.
       supabase.from("users").select("id, name, colour")
         .in("role", ["worker", "admin"]).eq("active", true).order("name"),
+      headCount().eq("status", "scheduled").is("date", null),
+      headCount().eq("status", "scheduled").not("date", "is", null).eq("assigned_worker_ids", "{}"),
+      headCount().eq("status", "scheduled").not("date", "is", null).neq("assigned_worker_ids", "{}"),
+      headCount().eq("status", "in_progress"),
+      headCount().eq("status", "completed"),
+      headCount().eq("status", "pending_review"),
+      headCount().eq("status", "cancelled"),
+      headCount(),
     ]);
     if (error) console.error("[admin/jobs page]", error);
     jobs = (js ?? []) as Job[];
     workers = (ws ?? []) as WorkerListEntry[];
+
+    counts.pending_allocation = cPending.count ?? 0;
+    counts.staff_allocation   = cStaff.count   ?? 0;
+    counts.scheduled          = cSched.count   ?? 0;
+    counts.in_progress        = cInProg.count  ?? 0;
+    counts.completed          = cDone.count    ?? 0;
+    counts.pending_review     = cReview.count  ?? 0;
+    counts.cancelled          = cCanc.count    ?? 0;
+    counts.all                = cAll.count     ?? 0;
   }
 
   return (
@@ -132,9 +175,6 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link
             href="/admin/jobs/new?status=pending_review"
-            // For phone / on-site enquiries that need a quote first.
-            // Lands the job in `pending_review` so the Quote estimate
-            // panel shows on the detail page.
             style={newQuoteBtnStyle}
             title="For phone / on-site enquiries that need a quote before scheduling"
           >
@@ -149,11 +189,13 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
         </div>
       </div>
 
-      {/* Status filter — buttons replace the previous dropdown.
-          Default landing (no ?status= in the URL) is Pending allocation. */}
+      {/* Status filter — each button shows a live count of jobs in
+          that bucket. Default landing (no ?status= in the URL) is
+          Pending allocation. */}
       <div style={statusBtnRowStyle} role="tablist" aria-label="Filter by status">
         {STATUS_BUTTONS.map((b) => {
           const isActive = b.key === activeStatus;
+          const count = counts[b.key];
           return (
             <Link
               key={b.key}
@@ -162,7 +204,10 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
               aria-selected={isActive}
               style={isActive ? statusBtnActiveStyle : statusBtnStyle}
             >
-              {b.label}
+              <span>{b.label}</span>
+              <span style={isActive ? countBadgeActiveStyle : countBadgeStyle}>
+                {count}
+              </span>
             </Link>
           );
         })}
@@ -170,8 +215,8 @@ export default async function AdminJobsPage({ searchParams }: { searchParams: Se
 
       <form method="GET" style={filterFormStyle}>
         {/* Preserve the active status when applying the secondary
-            filters (otherwise hitting Apply with no hidden field
-            would drop us back to Pending allocation). */}
+            filters (otherwise hitting Apply would default the page
+            back to Pending allocation). */}
         <input type="hidden" name="status" value={activeStatus} />
         <select name="type" defaultValue={searchParams.type ?? ""} className="form-select" style={selectStyle}>
           {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -244,12 +289,13 @@ const statusBtnStyle: React.CSSProperties = {
   color: "var(--navy)",
   border: "1.5px solid rgba(0,0,0,0.12)",
   borderRadius: 999,
-  padding: "8px 16px",
+  padding: "8px 14px",
   fontSize: 13,
   fontWeight: 700,
   textDecoration: "none",
   display: "inline-flex",
   alignItems: "center",
+  gap: 8,
   minHeight: 36,
   transition: "all 0.15s ease",
 };
@@ -258,6 +304,22 @@ const statusBtnActiveStyle: React.CSSProperties = {
   background: "var(--navy)",
   color: "white",
   borderColor: "var(--navy)",
+};
+const countBadgeStyle: React.CSSProperties = {
+  background: "rgba(0,0,0,0.06)",
+  color: "var(--navy)",
+  borderRadius: 999,
+  padding: "2px 9px",
+  fontSize: 12,
+  fontWeight: 800,
+  minWidth: 22,
+  textAlign: "center",
+  lineHeight: 1.4,
+};
+const countBadgeActiveStyle: React.CSSProperties = {
+  ...countBadgeStyle,
+  background: "var(--lime)",
+  color: "var(--navy)",
 };
 const filterFormStyle: React.CSSProperties = {
   display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap",
