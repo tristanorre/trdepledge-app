@@ -12,7 +12,7 @@ export default function Footer() {
                 src="/images/logo-v16.png"
                 alt="T.R. Depledge Gardening & Maintenance"
                 width={800}
-                height={800}
+                height={727}
               />
             </div>
             {/* Caveat-script flourish — small v16 cue carried through to the footer. */}

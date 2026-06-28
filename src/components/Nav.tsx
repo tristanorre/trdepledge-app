@@ -46,7 +46,7 @@ export default function Nav() {
             alt="T.R. Depledge Gardening & Maintenance"
             className="v16-logo-img"
             width={800}
-            height={800}
+            height={727}
             priority
           />
         </Link>

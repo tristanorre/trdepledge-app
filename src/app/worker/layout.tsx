@@ -28,7 +28,7 @@ export default async function WorkerLayout({ children }: { children: React.React
             src="/images/logo-v16.png"
             alt="T.R. Depledge Gardening & Maintenance"
             width={800}
-            height={800}
+            height={727}
             priority
             // v16 mark is square; bump height to 44px so the navy
             // badge reads cleanly at thumbnail size on the worker
