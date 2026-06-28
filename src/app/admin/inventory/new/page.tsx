@@ -14,7 +14,7 @@ export default async function NewAssetPage() {
   if (supabase) {
     const { data } = await supabase
       .from("users").select("id, name, colour")
-      .eq("role", "worker").eq("active", true).order("name");
+      .or("role.eq.worker,field_worker.eq.true").eq("active", true).order("name");
     workers = (data ?? []) as WorkerListEntry[];
   }
 

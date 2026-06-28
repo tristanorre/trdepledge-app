@@ -32,7 +32,7 @@ export async function GET(req: Request) {
   const week_end = addDaysISO(week_start, 6);
 
   const [{ data: workers }, { data: rawHours }] = await Promise.all([
-    supabase.from("users").select("id, name").eq("role", "worker").eq("active", true).order("name"),
+    supabase.from("users").select("id, name").or("role.eq.worker,field_worker.eq.true").eq("active", true).order("name"),
     supabase.from("worker_paid_hours")
       .select("worker_id, work_date, hours, source")
       .gte("work_date", week_start)

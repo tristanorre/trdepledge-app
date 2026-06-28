@@ -14,7 +14,7 @@ export default async function AdminHrLandingPage() {
   if (supabase) {
     const [pl, wc] = await Promise.all([
       supabase.from("leave_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
-      supabase.from("users").select("id", { count: "exact", head: true }).eq("role", "worker").eq("active", true),
+      supabase.from("users").select("id", { count: "exact", head: true }).or("role.eq.worker,field_worker.eq.true").eq("active", true),
     ]);
     pendingLeave = pl.count ?? 0;
     workerCount = wc.count ?? 0;

@@ -33,7 +33,7 @@ export default async function PayrollPage({
     const [{ data: ws }, { data: hs }] = await Promise.all([
       supabase.from("users")
         .select("id, name")
-        .eq("role", "worker")
+        .or("role.eq.worker,field_worker.eq.true")
         .eq("active", true)
         .order("name"),
       supabase.from("worker_paid_hours")

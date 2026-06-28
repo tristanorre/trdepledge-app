@@ -59,7 +59,7 @@ export default async function AdminInventoryPage({
 
     const [{ data: a }, { data: w }] = await Promise.all([
       assetsQuery,
-      supabase.from("users").select("id, name, colour").eq("role", "worker").eq("active", true).order("name"),
+      supabase.from("users").select("id, name, colour").or("role.eq.worker,field_worker.eq.true").eq("active", true).order("name"),
     ]);
     assets = (a ?? []) as Asset[];
     workers = (w ?? []) as WorkerListEntry[];

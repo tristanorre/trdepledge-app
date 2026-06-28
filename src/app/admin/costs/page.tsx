@@ -44,7 +44,7 @@ export default async function CostsPage({
       .eq("status", "completed")
       .order("date", { ascending: true }),
     supabase.from("users").select("id, name, colour")
-      .eq("role", "worker").order("name"),
+      .or("role.eq.worker,field_worker.eq.true").order("name"),
     getRates(supabase),
   ]);
 

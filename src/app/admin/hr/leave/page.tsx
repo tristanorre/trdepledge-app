@@ -66,7 +66,7 @@ export default async function AdminLeavePage({
         .from("leave_balances")
         .select("worker_id, annual_total, annual_used, sick_total, sick_used, personal_total, personal_used")
         .eq("year", year),
-      supabase.from("users").select("id, name, colour").eq("role", "worker").eq("active", true).order("name"),
+      supabase.from("users").select("id, name, colour").or("role.eq.worker,field_worker.eq.true").eq("active", true).order("name"),
     ]);
     if (bal) balances = new Map(bal.map((b) => [b.worker_id, b as Balance]));
     if (ws)  workersById = new Map(ws.map((w) => [w.id, { name: w.name, colour: w.colour }]));

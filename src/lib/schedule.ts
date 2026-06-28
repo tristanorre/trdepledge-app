@@ -49,7 +49,7 @@ export async function loadDaySchedule(
   const workersQuery = supabase
     .from("users")
     .select("id, name, colour")
-    .eq("role", "worker")
+    .or("role.eq.worker,field_worker.eq.true")
     .eq("active", true)
     .order("name");
 

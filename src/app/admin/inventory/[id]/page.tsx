@@ -20,7 +20,7 @@ export default async function AssetDetailPage({ params }: { params: { id: string
     supabase.from("assets").select("*").eq("id", params.id).maybeSingle(),
     supabase
       .from("users").select("id, name, colour")
-      .eq("role", "worker").eq("active", true).order("name"),
+      .or("role.eq.worker,field_worker.eq.true").eq("active", true).order("name"),
   ]);
 
   if (!assetData) notFound();

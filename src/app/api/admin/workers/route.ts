@@ -16,7 +16,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("users")
     .select("id, name, colour")
-    .eq("role", "worker")
+    .or("role.eq.worker,field_worker.eq.true")
     .eq("active", true)
     .order("name");
 
