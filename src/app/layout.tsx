@@ -39,10 +39,11 @@ export const metadata: Metadata = {
   description:
     "T.R. Depledge Gardening & Maintenance — Wallaroo, Copper Coast SA.",
   icons: {
-    icon: [
-      { url: "/favicon.ico", sizes: "32x32" },
-      { url: "/logo.svg", type: "image/svg+xml" },
-    ],
+    // favicon.ico is multi-res (48/32/16) and renders the new
+    // T.R. Depledge mark on the project navy. The legacy /logo.svg
+    // reference was the old green wordmark — dropped so browsers
+    // don't prefer the SVG over the up-to-date ICO.
+    icon: [{ url: "/favicon.ico", sizes: "48x48 32x32 16x16" }],
     apple: { url: "/apple-touch-icon.png", sizes: "180x180" },
   },
   manifest: "/manifest.webmanifest",

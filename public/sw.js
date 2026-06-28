@@ -20,15 +20,22 @@ importScripts("https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js");
 //             yellow ribbon "GARDENING & MAINTENANCE" + "EST. 2020").
 //   v3 -> v4: v3 had been built from the wrong source file (a TAJJPI
 //             mark) — corrected to the real TR Depledge artwork.
-const VERSION = "v4";
+//   v4 -> v5: regenerated favicon.ico (multi-res 48/32/16),
+//             apple-touch-icon.png, and PWA icons (192/512) from
+//             the real TR Depledge mark on navy. Dropped the legacy
+//             /logo.svg shell entry — the green wordmark is gone.
+const VERSION = "v5";
 const SHELL_CACHE = `trdepledge-shell-${VERSION}`;
 const PAGE_CACHE  = `trdepledge-pages-${VERSION}`;
 
 // Pre-cached shell — keep tight. Anything else is cached on first hit.
+// /logo.svg dropped on the v4 -> v5 bump (was the old green wordmark);
+// the favicon + apple-touch + PWA icons all come from the new mark.
 const SHELL = [
   "/",
   "/login",
-  "/logo.svg",
+  "/favicon.ico",
+  "/apple-touch-icon.png",
   "/manifest.webmanifest",
 ];
 
