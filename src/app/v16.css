@@ -136,6 +136,43 @@ main { padding-top: 0; }
   margin-top: 2px;
 }
 
+/* Far-right credit block — three small stacked lines linking out to
+   the TAJJPI site. Intentionally muted so it doesn't compete with
+   the primary nav, but TAJJPI itself gets the lime accent so it
+   reads as a brand mark. */
+.v16-credit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: auto;
+  text-decoration: none;
+  transition: opacity 0.18s ease;
+}
+.v16-credit:hover { opacity: 0.85; }
+.v16-credit-eyebrow {
+  color: rgba(255,255,255,0.55);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.v16-credit-brand {
+  color: var(--lime);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 2px;
+  margin: 2px 0 1px;
+}
+.v16-credit-url {
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+}
+
 /* Hamburger — surfaced on narrow widths only. */
 .v16-hamburger {
   display: none;
@@ -576,6 +613,9 @@ main { padding-top: 0; }
   .v16-logo-img { height: 140px; top: 6px; }
   .v16-navlinks { display: none; }
   .v16-hamburger { display: flex; }
+  /* Credit is the lowest-priority item on mobile — drop it so the
+     phone widget + hamburger have breathing room. */
+  .v16-credit { display: none; }
 
   /* Single column stack: text → photo → walker strip. The grid
      reshapes from 2×2 to 1-column-3-rows so the walker strip still
