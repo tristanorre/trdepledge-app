@@ -29,10 +29,16 @@ export default async function AdminHrLandingPage() {
 
       <div style={cardsGrid}>
         <Card
+          href="/admin/hr/workers"
+          title="Workers"
+          desc="Profiles, contact details, allocated inventory and dates per team member."
+          stat={`${workerCount} active`}
+        />
+        <Card
           href="/admin/hr/roster"
           title="Roster"
           desc="Set working days and hours for each worker, week by week."
-          stat={`${workerCount} active worker${workerCount === 1 ? "" : "s"}`}
+          stat="Edit this week →"
         />
         <Card
           href="/admin/hr/leave"

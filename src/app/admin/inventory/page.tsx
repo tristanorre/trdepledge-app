@@ -105,6 +105,16 @@ export default async function AdminInventoryPage({
           <option value="">All conditions</option>
           {ASSET_CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
+        {/* Worker filter — only useful in the By-worker view (in All-assets
+            view it'd just collapse the list to one person's stuff, which
+            is the same thing the By-worker view does already). */}
+        {view === "by-worker" && (
+          <select name="worker" defaultValue={searchParams.worker ?? ""} className="form-select" style={selectStyle}>
+            <option value="">All workers</option>
+            <option value="pool">Equipment pool (unassigned)</option>
+            {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        )}
         <button type="submit" style={applyBtnStyle}>Apply</button>
       </form>
 
