@@ -74,6 +74,29 @@ function fmtDuration(start?: string, end?: string): string {
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
+// Net on-site duration: end-minus-start MINUS total break minutes.
+// Matches what the cost engine (lib/cost.ts > hoursForEntry) uses
+// for billing + payroll. Before this existed the admin "On site"
+// cell showed the gross duration only — so a 4h shift with a 1h
+// break read as "4h 00m" while billing said 3h, and Thomas saw a
+// mismatch between the time-log display and the cost breakdown.
+//
+// Open shifts (no end yet) count up to "now"; open breaks (no end
+// yet) also count up to "now" so the live display stays accurate
+// mid-break.
+function fmtNetDuration(entry: Entry | undefined): string {
+  if (!entry?.start) return "—";
+  const startMs = new Date(entry.start).getTime();
+  const endMs   = entry.end ? new Date(entry.end).getTime() : Date.now();
+  const grossMins = Math.max(0, (endMs - startMs) / 60_000);
+  const breakMins = totalBreakMinutes(entry.breaks);
+  const mins = Math.max(0, Math.round(grossMins - breakMins));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h <= 0) return `${m}m`;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 function totalBreakMinutes(breaks: Break[] | undefined): number {
   if (!breaks?.length) return 0;
   let total = 0;
@@ -280,8 +303,10 @@ export default function TimeLogEditor({ jobId, workers, initialTimeLog }: Props)
                     <div style={cellValue}>{fmtTime(e.end)}</div>
                   </div>
                   <div style={cellStyle}>
-                    <div style={cellLabel}>On site</div>
-                    <div style={cellValue}>{fmtDuration(e.start, e.end)}</div>
+                    <div style={cellLabel}>On site (net)</div>
+                    <div style={cellValue} title="Clock-in to clock-out minus total break minutes — matches the billing + payroll calc.">
+                      {fmtNetDuration(e)}
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {open && (
