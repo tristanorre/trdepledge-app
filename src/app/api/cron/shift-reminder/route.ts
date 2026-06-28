@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase";
 import { sendPush } from "@/lib/onesignal";
-import { todayISO } from "@/lib/dates";
+import { todayISO, fmtHMInAppTZ } from "@/lib/dates";
 import type { Job } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -31,8 +31,12 @@ export async function GET(req: Request) {
   const lower = addMinutes(now, 50);
   const upper = addMinutes(now, 70);
 
-  const lowerHm = `${pad(lower.getHours())}:${pad(lower.getMinutes())}:00`;
-  const upperHm = `${pad(upper.getHours())}:${pad(upper.getMinutes())}:59`;
+  // jobs.scheduled_time is stored in Adelaide local time, so the bounds
+  // we compare against need to be Adelaide-local HH:MM too. Raw
+  // .getHours() on a Vercel UTC lambda would query 12 hours offset and
+  // miss every job.
+  const lowerHm = `${fmtHMInAppTZ(lower)}:00`;
+  const upperHm = `${fmtHMInAppTZ(upper)}:59`;
 
   const { data: jobs, error } = await supabase
     .from("jobs")
@@ -82,4 +86,3 @@ function isAuthorisedCron(req: Request): boolean {
 function addMinutes(d: Date, mins: number): Date {
   return new Date(d.getTime() + mins * 60_000);
 }
-function pad(n: number): string { return String(n).padStart(2, "0"); }

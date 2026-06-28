@@ -186,6 +186,40 @@ export function timeToMinutes(t: string | null | undefined): number | null {
   return hh * 60 + mm;
 }
 
+// "Now" in Adelaide local time. Use these instead of `new Date()
+// .getHours()` / .getMinutes() on any server-side code path — Vercel
+// lambdas run in UTC, so naive local getters return UTC values and
+// produce wrong-time-of-day bugs (the most user-visible was the admin
+// dashboard greeting saying "Good morning" at 8 PM Adelaide because
+// UTC was still 9 AM).
+
+const partsFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeZone: APP_TIMEZONE,
+  hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
+});
+
+/** Hour / minute / second of the current Adelaide instant. */
+export function nowInAppTZParts(d = new Date()): { hours: number; minutes: number; seconds: number } {
+  const parts = partsFormatter.formatToParts(d);
+  let h = 0, m = 0, s = 0;
+  for (const p of parts) {
+    if (p.type === "hour")   h = Number(p.value);
+    if (p.type === "minute") m = Number(p.value);
+    if (p.type === "second") s = Number(p.value);
+  }
+  // Intl returns "24" for midnight in some locales — clamp.
+  if (h === 24) h = 0;
+  return { hours: h, minutes: m, seconds: s };
+}
+
+/** "HH:MM" of an instant in Adelaide local time. Used by cron filters
+ *  that compare against the `scheduled_time` time column (also stored
+ *  in local time). */
+export function fmtHMInAppTZ(d: Date): string {
+  const { hours, minutes } = nowInAppTZParts(d);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 /** Format minutes after midnight as "Hh AM/PM" or similar. */
 export function minutesToLabel(mins: number): string {
   const h = Math.floor(mins / 60);

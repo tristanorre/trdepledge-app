@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
-import { todayISO } from "@/lib/dates";
+import { todayISO, fmtDayLong, nowInAppTZParts } from "@/lib/dates";
 
-function greeting(d = new Date()) {
-  const h = d.getHours();
+// Hour of day in Adelaide TZ — NOT new Date().getHours(), which on a
+// Vercel UTC lambda returns the UTC hour and was telling Thomas
+// "Good morning" at 8 PM Adelaide.
+function greeting() {
+  const h = nowInAppTZParts().hours;
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
@@ -16,9 +19,9 @@ export default async function AdminDashboard() {
   const session = await requireAdmin();
   const supabase = getServiceClient();
   const today = todayISO();
-  const todayLabel = new Date().toLocaleDateString("en-AU", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
+  // todayISO() is already Adelaide-local, so this label always matches
+  // the day Thomas's phone is showing.
+  const todayLabel = fmtDayLong(today);
 
   // Cheap parallel counts. Even at scale these are millisecond-level.
   let todayJobs = 0;

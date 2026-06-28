@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { loadDaySchedule, colourForSlot, type SlotColour, type WorkerDayState } from "@/lib/schedule";
-import { fmtDayLong, todayISO, minutesToLabel } from "@/lib/dates";
+import { fmtDayLong, todayISO, minutesToLabel, nowInAppTZParts } from "@/lib/dates";
 import DateSelector from "@/components/DateSelector";
 
 export const dynamic = "force-dynamic";
@@ -63,10 +63,12 @@ export default async function TimeAllocationBoardPage({
 
   const data = await loadDaySchedule(supabase, date);
 
-  // Compute "now marker" only when viewing today.
+  // Compute "now marker" only when viewing today. Hours/minutes come
+  // from Adelaide local time — raw new Date().getHours() returns UTC
+  // on Vercel and would draw the marker hours off the actual position.
   const isToday = date === todayISO();
-  const now = new Date();
-  const nowMins = isToday ? now.getHours() * 60 + now.getMinutes() : null;
+  const nowParts = nowInAppTZParts();
+  const nowMins = isToday ? nowParts.hours * 60 + nowParts.minutes : null;
   const nowOffsetPx =
     nowMins !== null && nowMins >= FIRST_MIN && nowMins < LAST_MIN
       ? ((nowMins - FIRST_MIN) / 15) * SLOT_WIDTH
