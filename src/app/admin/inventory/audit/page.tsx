@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { AUDIT_ACTIONS, type AuditAction } from "@/lib/audit";
+import { ASSET_CATEGORIES, type AssetCategory } from "@/lib/types-inventory";
 
 export const dynamic = "force-dynamic";
 
@@ -42,16 +43,25 @@ function fmtTimestamp(iso: string): string {
   });
 }
 
+type AssetOption = { id: string; name: string; category: AssetCategory };
+
 export default async function AuditLogPage({
   searchParams,
 }: {
-  searchParams: { action?: string };
+  searchParams: { action?: string; item?: string };
 }) {
   await requireAdmin();
   const supabase = getServiceClient();
 
   let entries: EntryRow[] = [];
-  let dbConfigured = !!supabase;
+  let assets: AssetOption[] = [];
+  const dbConfigured = !!supabase;
+  // Only honour the item param if it's a valid uuid — otherwise PostgREST
+  // returns a 400 and the whole list goes blank. Simple regex is enough.
+  const itemFilter =
+    searchParams.item && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchParams.item)
+      ? searchParams.item
+      : "";
 
   if (supabase) {
     let q = supabase
@@ -68,10 +78,32 @@ export default async function AuditLogPage({
     if (searchParams.action && (AUDIT_ACTIONS as readonly string[]).includes(searchParams.action)) {
       q = q.eq("action", searchParams.action);
     }
+    if (itemFilter) {
+      q = q.eq("item_id", itemFilter);
+    }
 
-    const { data, error } = await q;
+    // Asset list for the dropdown — same ordering as /admin/inventory
+    // (category asc, then name asc) so the option list reads identically.
+    const [{ data, error }, { data: assetRows }] = await Promise.all([
+      q,
+      supabase
+        .from("assets")
+        .select("id, name, category")
+        .order("category", { ascending: true })
+        .order("name", { ascending: true })
+        .limit(500),
+    ]);
     if (error) console.error("[audit-log page]", error);
     entries = ((data ?? []) as unknown) as EntryRow[];
+    assets = (assetRows ?? []) as AssetOption[];
+  }
+
+  // Group assets by category for the <optgroup> layout — mirrors the
+  // category-grouped section headers on the inventory list page.
+  const assetsByCategory = new Map<AssetCategory, AssetOption[]>();
+  for (const a of assets) {
+    if (!assetsByCategory.has(a.category)) assetsByCategory.set(a.category, []);
+    assetsByCategory.get(a.category)!.push(a);
   }
 
   return (
@@ -86,6 +118,19 @@ export default async function AuditLogPage({
       <form method="GET" style={filterFormStyle}>
         <select name="action" defaultValue={searchParams.action ?? ""} className="form-select" style={{ flex: "1 1 200px" }}>
           {ACTION_FILTERS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {/* Item dropdown — list mirrors /admin/inventory exactly:
+            category-grouped via <optgroup>, alpha within each. Picking
+            an item filters the log to entries with that item_id. */}
+        <select name="item" defaultValue={itemFilter} className="form-select" style={{ flex: "1 1 200px" }}>
+          <option value="">All items</option>
+          {ASSET_CATEGORIES.filter((c) => assetsByCategory.has(c)).map((cat) => (
+            <optgroup key={cat} label={cat}>
+              {assetsByCategory.get(cat)!.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </optgroup>
+          ))}
         </select>
         <button type="submit" style={applyBtnStyle}>Apply</button>
       </form>
