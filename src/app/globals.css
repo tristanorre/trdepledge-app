@@ -891,3 +891,103 @@ footer {
   .hero-actions { flex-direction: column; }
   .book-actions { flex-direction: column; align-items: center; }
 }
+
+/* ── Admin shell layout ─────────────────────────────────────────────
+   Desktop  (>= 768px): left sidebar + main content on the right.
+   Mobile   (<  768px): bottom nav strip, sidebar hidden.
+   Only one nav is visible at a time thanks to display:none on the
+   other. AdminNav renders both so a resize between breakpoints
+   doesn't need a re-render.
+   ───────────────────────────────────────────────────────────────── */
+
+.admin-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--off);
+}
+.admin-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.admin-main {
+  flex: 1;
+  padding: 24px 20px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  min-width: 0;
+}
+
+/* Desktop sidebar */
+.admin-sidebar {
+  background: var(--navy);
+  width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0;
+  position: sticky;
+  top: 64px;                       /* clears the sticky top bar */
+  align-self: flex-start;
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+}
+.admin-sidebar-link {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 12px 24px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.admin-sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+}
+.admin-sidebar-link.is-active {
+  background: rgba(255, 255, 255, 0.10);
+  color: white;
+  border-left-color: var(--lime);
+}
+
+/* Bottom nav — mobile only */
+.admin-bottom-nav {
+  display: none;
+}
+.admin-bottom-nav-link {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+  padding: 10px 2px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.admin-bottom-nav-link.is-active { color: var(--lime); }
+
+@media (max-width: 767px) {
+  .admin-sidebar { display: none; }
+  .admin-bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: var(--navy);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 100;
+  }
+  .admin-main { padding-bottom: 96px; }  /* clear the fixed bottom nav */
+}
