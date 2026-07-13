@@ -14,13 +14,14 @@ export const dynamic = "force-dynamic";
 // Gallery is entirely admin-curated via /admin/photos. Until at least
 // one photo is featured the grid renders blank — no static fallback,
 // no placeholder tiles, per Thomas's request.
+// Public captions are deliberately just "Before" / "After" — no client
+// names, no suburbs, no admin free-text — to keep client details off
+// the public marketing site.
 type FeaturedRow = {
   storage_path: string;
   kind: "before" | "after";
-  caption: string | null;
   sort_order: number;
   featured_at: string;
-  job: { client_name: string; suburb: string | null } | null;
 };
 
 export default async function GalleryPage() {
@@ -30,29 +31,19 @@ export default async function GalleryPage() {
   if (supabase) {
     const { data, error } = await supabase
       .from("featured_photos")
-      .select(`
-        storage_path, kind, caption, sort_order, featured_at,
-        job:job_id ( client_name, suburb )
-      `)
+      .select("storage_path, kind, sort_order, featured_at")
       .order("sort_order", { ascending: true })
       .order("featured_at", { ascending: false })
       .limit(60);
     if (error) console.error("[gallery]", error);
 
-    const rows = ((data ?? []) as unknown) as FeaturedRow[];
+    const rows = (data ?? []) as FeaturedRow[];
     const signed = await signPhotoUrls(supabase, rows.map((r) => r.storage_path));
     const urlByPath = new Map(signed.map((s) => [s.path, s.url]));
     for (const r of rows) {
       const url = urlByPath.get(r.storage_path);
       if (!url) continue;
-      // Prefer the admin-supplied caption, then fall back to a synthesised
-      // one from the job context ("Hedge Trim — Wallaroo · Before").
-      const cap = r.caption
-        ?? [
-              r.job?.client_name,
-              r.job?.suburb,
-              r.kind === "before" ? "Before" : "After",
-            ].filter(Boolean).join(" · ");
+      const cap = r.kind === "before" ? "Before" : "After";
       featured.push({ url, caption: cap, kind: r.kind });
     }
   }
