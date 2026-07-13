@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { todayISO } from "@/lib/dates";
 
 const TYPES = ["Annual Leave", "Sick Leave", "Personal Leave", "Unpaid"] as const;
 
@@ -66,16 +65,20 @@ export default function LeaveRequestForm() {
         </select>
       </div>
 
+      {/* No date bounds — workers may need to submit leave for a period
+          already partly in the past (e.g. Monday-morning sick day for
+          Sunday). Only "to must be on or after from" is enforced, via
+          the min on the To input. */}
       <div className="form-row">
         <div className="form-group">
           <label className="form-label" htmlFor="from">From</label>
           <input id="from" type="date" className="form-input"
-            value={from} min={todayISO()} onChange={(e) => setFrom(e.target.value)} required />
+            value={from} onChange={(e) => setFrom(e.target.value)} required />
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="to">To</label>
           <input id="to" type="date" className="form-input"
-            value={to} min={from || todayISO()} onChange={(e) => setTo(e.target.value)} required />
+            value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} required />
         </div>
       </div>
 

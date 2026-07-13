@@ -73,22 +73,21 @@ export async function POST(req: Request) {
   if (to_date < from_date) {
     return NextResponse.json({ error: "to_date must be on or after from_date" }, { status: 400 });
   }
-  // Sanity bounds. Without these, a typo like "2105" instead of "2025"
-  // sails through (string comparison says it's a valid range), and you
-  // end up with a leave_requests row 80 years in the future that breaks
-  // every yearly balance roll-up. Also block requests >12 months out
-  // (anything legitimate that far ahead can be re-submitted closer to
-  // the date) and any from_date in the past — workers can't request
-  // backdated leave through the form; admins do that manually.
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const horizon = new Date(today); horizon.setMonth(horizon.getMonth() + 12);
-  const horizonISO = `${horizon.getFullYear()}-${String(horizon.getMonth() + 1).padStart(2, "0")}-${String(horizon.getDate()).padStart(2, "0")}`;
-  if (from_date < todayISO) {
-    return NextResponse.json({ error: "from_date can't be in the past" }, { status: 400 });
-  }
-  if (to_date > horizonISO) {
-    return NextResponse.json({ error: "to_date can't be more than 12 months from today" }, { status: 400 });
+  // No past-date / horizon guards. Workers may need to submit leave
+  // for a period already in the past (Monday-morning sick day for
+  // Sunday, retroactive personal day, etc.). A light-touch typo guard
+  // still catches obvious wrong-century entries — years must fall in
+  // a 20-year window either side of "now" (Adelaide-local, matching
+  // the rest of the app's TZ).
+  const nowYear = new Date().getUTCFullYear();
+  const fromYear = Number(from_date.slice(0, 4));
+  const toYear   = Number(to_date.slice(0, 4));
+  if (
+    !Number.isFinite(fromYear) || !Number.isFinite(toYear) ||
+    fromYear < nowYear - 20 || fromYear > nowYear + 20 ||
+    toYear   < nowYear - 20 || toYear   > nowYear + 20
+  ) {
+    return NextResponse.json({ error: "Dates look wrong — check the year" }, { status: 400 });
   }
 
   const { error } = await supabase.from("leave_requests").insert({
