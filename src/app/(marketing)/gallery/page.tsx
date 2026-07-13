@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import BookCta from "@/components/BookCta";
 import { getServiceClient } from "@/lib/supabase";
 import { signPhotoUrls } from "@/lib/storage";
@@ -12,19 +11,9 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-// Curated by admin on /admin/photos. Empty featured_photos falls back
-// to the eight static images so the page never renders bare.
-const STATIC_FALLBACK = [
-  { src: "/images/gallery-1.jpg", caption: "Hedge & Garden Care" },
-  { src: "/images/gallery-2.jpg", caption: "Lawn & Edging" },
-  { src: "/images/gallery-3.jpg", caption: "Yard Revamp" },
-  { src: "/images/gallery-4.jpg", caption: "Landscaping" },
-  { src: "/images/gallery-5.jpg", caption: "Garden Clean-Up" },
-  { src: "/images/gallery-6.jpg", caption: "Hedge Trimming" },
-  { src: "/images/gallery-7.jpg", caption: "Mowing & Maintenance" },
-  { src: "/images/gallery-8.jpg", caption: "Garden Beds" },
-];
-
+// Gallery is entirely admin-curated via /admin/photos. Until at least
+// one photo is featured the grid renders blank — no static fallback,
+// no placeholder tiles, per Thomas's request.
 type FeaturedRow = {
   storage_path: string;
   kind: "before" | "after";
@@ -84,24 +73,19 @@ export default async function GalleryPage() {
         </div>
       </section>
 
-      <div className="gallery-grid">
-        {showFeatured
-          ? featured.map((g, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <div key={`${g.url}-${i}`} className="gallery-item">
-                <img src={g.url} alt={g.caption} />
-                <div className="gallery-overlay">
-                  <span>{g.caption}</span>
-                </div>
+      {showFeatured && (
+        <div className="gallery-grid">
+          {featured.map((g, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <div key={`${g.url}-${i}`} className="gallery-item">
+              <img src={g.url} alt={g.caption} />
+              <div className="gallery-overlay">
+                <span>{g.caption}</span>
               </div>
-            ))
-          : STATIC_FALLBACK.map((g) => (
-              <div key={g.src} className="gallery-item">
-                <Image src={g.src} alt={g.caption} width={1200} height={800} />
-                <div className="gallery-overlay"><span>{g.caption}</span></div>
-              </div>
-            ))}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <BookCta
         eyebrow="Your Garden Next?"

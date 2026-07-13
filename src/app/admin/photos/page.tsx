@@ -57,12 +57,16 @@ export default async function AdminPhotosPage({
   let tiles: Tile[] = [];
 
   if (supabase) {
-    // Only jobs that actually have at least one photo — no point loading
-    // the whole jobs table into memory.
+    // Only completed jobs with at least one photo. Per Thomas: the
+    // curator is a review of finished work — in-progress or scheduled
+    // jobs stay off this page even if a worker has already uploaded a
+    // Before photo. When the job hits Completed status it appears here
+    // for curation.
     const [{ data: jobsData }, { data: featData }] = await Promise.all([
       supabase
         .from("jobs")
         .select("id, client_name, suburb, date, photos_before, photos_after")
+        .eq("status", "completed")
         .or("photos_before.not.eq.{},photos_after.not.eq.{}")
         .order("date", { ascending: false, nullsFirst: false })
         .order("client_name", { ascending: true })
@@ -135,7 +139,7 @@ export default async function AdminPhotosPage({
         </Link>
       </div>
       <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 16, lineHeight: 1.6 }}>
-        Every before/after photo across the jobs, in one place. Tap <strong>Feature</strong> to add a photo
+        Every before/after photo from every <strong>completed</strong> job, in one place. Tap <strong>Feature</strong> to add a photo
         to the public gallery on <Link href="/gallery" style={{ color: "var(--navy)", fontWeight: 700 }}>trdepledgegardeningandmaintenance.com/gallery</Link>.
         Unfeaturing removes it from the site but leaves the original on the job.
       </p>
