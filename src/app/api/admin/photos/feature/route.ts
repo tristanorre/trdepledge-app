@@ -5,10 +5,14 @@ import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 export const runtime = "nodejs";
 
 // POST /api/admin/photos/feature
-//   Body: { job_id, kind: "before" | "after", storage_path, caption? }
-// Adds a job photo to the marketing gallery. Idempotent via the
+//   Body: { job_id: string | null, kind: "before" | "after", storage_path, caption? }
+// Adds a photo to the marketing gallery. Idempotent via the
 // storage_path unique constraint — a repeat call for the same path
 // silently succeeds (the row already exists).
+//
+// job_id is nullable — standalone uploads (from /admin/photos upload
+// widget) have no owning job. Featured_photos.job_id was made nullable
+// in migration 0029.
 export async function POST(req: Request) {
   const auth = await requireApiAdmin();
   if (auth instanceof NextResponse) return auth;
@@ -26,13 +30,17 @@ export async function POST(req: Request) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const job_id = String(body.job_id ?? "");
+  const rawJobId = body.job_id;
+  const job_id: string | null =
+    rawJobId === null || rawJobId === undefined || rawJobId === ""
+      ? null
+      : String(rawJobId);
   const kind = String(body.kind ?? "");
   const storage_path = String(body.storage_path ?? "");
   const caption = body.caption ? String(body.caption).trim().slice(0, 200) : null;
 
-  if (!/^[0-9a-f-]{36}$/i.test(job_id)) {
-    return NextResponse.json({ error: "job_id must be a uuid" }, { status: 400 });
+  if (job_id !== null && !/^[0-9a-f-]{36}$/i.test(job_id)) {
+    return NextResponse.json({ error: "job_id must be a uuid or null" }, { status: 400 });
   }
   if (kind !== "before" && kind !== "after") {
     return NextResponse.json({ error: "kind must be 'before' or 'after'" }, { status: 400 });

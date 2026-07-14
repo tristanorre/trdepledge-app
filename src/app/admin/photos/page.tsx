@@ -3,6 +3,8 @@ import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { signPhotoUrls } from "@/lib/storage";
 import FeaturePhotoToggle from "@/components/FeaturePhotoToggle";
+import GalleryUploadForm from "@/components/GalleryUploadForm";
+import StandalonePhotoDelete from "@/components/StandalonePhotoDelete";
 import { fmtDayShort } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +18,14 @@ type JobRow = {
   photos_after: string[] | null;
 };
 
-type FilterKey = "all" | "featured" | "unfeatured" | "before" | "after";
+type StandaloneRow = {
+  id: string;
+  storage_path: string;
+  kind: "before" | "after";
+  uploaded_at: string;
+};
+
+type FilterKey = "all" | "featured" | "unfeatured" | "before" | "after" | "standalone";
 
 const FILTER_BUTTONS: Array<{ key: FilterKey; label: string }> = [
   { key: "all",        label: "All photos" },
@@ -24,10 +33,17 @@ const FILTER_BUTTONS: Array<{ key: FilterKey; label: string }> = [
   { key: "unfeatured", label: "Not yet featured" },
   { key: "before",     label: "Before only" },
   { key: "after",      label: "After only" },
+  { key: "standalone", label: "Uploaded photos" },
 ];
 
+// A tile is either from a job or from a standalone upload. The two
+// look almost identical on the grid; the only differences are the
+// caption (job name vs. "Uploaded photo") and whether a Delete button
+// shows (standalone only — deleting a job photo is done from the job
+// page).
 type Tile = {
-  jobId: string;
+  source: "job" | "standalone";
+  jobId: string | null;
   jobName: string;
   jobSuburb: string | null;
   jobDate: string | null;
@@ -37,10 +53,12 @@ type Tile = {
   featured: boolean;
 };
 
-// Curation view — every before/after photo on every job in one grid,
-// with a Feature toggle beside each. Featured photos surface on the
-// public /gallery. Photos themselves stay on their originating job
-// regardless of feature status.
+// Curation view — every before/after photo across every completed job
+// and every standalone upload in one grid, with a Feature toggle
+// beside each. Featured photos surface on the public /gallery.
+// Standalone photos come from the upload widget at the top of the
+// page (Thomas can add photos from his phone that aren't attached to
+// a job).
 export default async function AdminPhotosPage({
   searchParams,
 }: {
@@ -53,16 +71,11 @@ export default async function AdminPhotosPage({
     (FILTER_BUTTONS.find((f) => f.key === searchParams.filter)?.key ?? "all");
 
   let jobs: JobRow[] = [];
-  let featuredPaths = new Set<string>();
-  let tiles: Tile[] = [];
+  let standalones: StandaloneRow[] = [];
+  const featuredPaths = new Set<string>();
 
   if (supabase) {
-    // Only completed jobs with at least one photo. Per Thomas: the
-    // curator is a review of finished work — in-progress or scheduled
-    // jobs stay off this page even if a worker has already uploaded a
-    // Before photo. When the job hits Completed status it appears here
-    // for curation.
-    const [{ data: jobsData }, { data: featData }] = await Promise.all([
+    const [{ data: jobsData }, { data: standaloneData }, { data: featData }] = await Promise.all([
       supabase
         .from("jobs")
         .select("id, client_name, suburb, date, photos_before, photos_after")
@@ -71,31 +84,55 @@ export default async function AdminPhotosPage({
         .order("date", { ascending: false, nullsFirst: false })
         .order("client_name", { ascending: true })
         .limit(300),
+      supabase
+        .from("standalone_photos")
+        .select("id, storage_path, kind, uploaded_at")
+        .order("uploaded_at", { ascending: false })
+        .limit(300),
       supabase.from("featured_photos").select("storage_path"),
     ]);
     jobs = (jobsData ?? []) as JobRow[];
+    standalones = (standaloneData ?? []) as StandaloneRow[];
     for (const f of (featData ?? []) as Array<{ storage_path: string }>) {
       featuredPaths.add(f.storage_path);
     }
   }
 
-  // Flatten every photo into a Tile with its job context. Signing all
-  // URLs in one batch is much cheaper than one round-trip per photo.
-  const flat: Array<{ jobId: string; jobName: string; jobSuburb: string | null; jobDate: string | null; kind: "before" | "after"; path: string }> = [];
+  const flat: Array<{
+    source: "job" | "standalone";
+    jobId: string | null;
+    jobName: string;
+    jobSuburb: string | null;
+    jobDate: string | null;
+    kind: "before" | "after";
+    path: string;
+  }> = [];
   for (const j of jobs) {
     for (const p of j.photos_before ?? []) {
-      flat.push({ jobId: j.id, jobName: j.client_name, jobSuburb: j.suburb, jobDate: j.date, kind: "before", path: p });
+      flat.push({ source: "job", jobId: j.id, jobName: j.client_name, jobSuburb: j.suburb, jobDate: j.date, kind: "before", path: p });
     }
     for (const p of j.photos_after ?? []) {
-      flat.push({ jobId: j.id, jobName: j.client_name, jobSuburb: j.suburb, jobDate: j.date, kind: "after", path: p });
+      flat.push({ source: "job", jobId: j.id, jobName: j.client_name, jobSuburb: j.suburb, jobDate: j.date, kind: "after", path: p });
     }
+  }
+  for (const s of standalones) {
+    flat.push({
+      source: "standalone",
+      jobId: null,
+      jobName: "Uploaded photo",
+      jobSuburb: null,
+      jobDate: s.uploaded_at,
+      kind: s.kind,
+      path: s.storage_path,
+    });
   }
 
   const allPaths = flat.map((f) => f.path);
   const signed = await signPhotoUrls(supabase, allPaths);
   const urlByPath = new Map(signed.map((s) => [s.path, s.url]));
 
-  tiles = flat.map((f) => ({
+  const tiles: Tile[] = flat.map((f) => ({
+    source: f.source,
     jobId: f.jobId,
     jobName: f.jobName,
     jobSuburb: f.jobSuburb,
@@ -112,6 +149,7 @@ export default async function AdminPhotosPage({
       case "unfeatured": return !t.featured;
       case "before":     return t.kind === "before";
       case "after":      return t.kind === "after";
+      case "standalone": return t.source === "standalone";
       default:           return true;
     }
   });
@@ -121,6 +159,7 @@ export default async function AdminPhotosPage({
   const beforeCount = tiles.filter((t) => t.kind === "before").length;
   const afterCount = tiles.filter((t) => t.kind === "after").length;
   const unfeaturedCount = totalCount - featuredCount;
+  const standaloneCount = tiles.filter((t) => t.source === "standalone").length;
 
   const countByFilter: Record<FilterKey, number> = {
     all: totalCount,
@@ -128,6 +167,7 @@ export default async function AdminPhotosPage({
     unfeatured: unfeaturedCount,
     before: beforeCount,
     after: afterCount,
+    standalone: standaloneCount,
   };
 
   return (
@@ -139,10 +179,12 @@ export default async function AdminPhotosPage({
         </Link>
       </div>
       <p style={{ color: "var(--gray)", fontSize: 14, marginBottom: 16, lineHeight: 1.6 }}>
-        Every before/after photo from every <strong>completed</strong> job, in one place. Tap <strong>Feature</strong> to add a photo
+        Every before/after photo from every <strong>completed</strong> job, plus any photos you upload directly below. Tap <strong>Feature</strong> to add a photo
         to the public gallery on <Link href="/gallery" style={{ color: "var(--navy)", fontWeight: 700 }}>trdepledgegardeningandmaintenance.com/gallery</Link>.
-        Unfeaturing removes it from the site but leaves the original on the job.
+        Unfeaturing removes it from the site but leaves the original here.
       </p>
+
+      <GalleryUploadForm />
 
       <div style={filterRowStyle} role="tablist" aria-label="Filter photos">
         {FILTER_BUTTONS.map((f) => {
@@ -171,7 +213,7 @@ export default async function AdminPhotosPage({
             No photos match this view.
           </div>
           <div style={{ color: "var(--gray)", fontSize: 14 }}>
-            Photos land here as workers capture them on the job app.
+            Upload photos above, or complete a job with before/after shots.
           </div>
         </div>
       ) : (
@@ -186,6 +228,7 @@ export default async function AdminPhotosPage({
 }
 
 function PhotoTile({ tile }: { tile: Tile }) {
+  const dateStr = tile.jobDate ? fmtDayShort(tile.jobDate) : null;
   return (
     <div style={tileStyle}>
       <div style={imgWrap}>
@@ -203,14 +246,23 @@ function PhotoTile({ tile }: { tile: Tile }) {
         {tile.featured && (
           <span style={featuredBadge} title="On the public gallery">★ Featured</span>
         )}
+        {tile.source === "standalone" && (
+          <span style={standaloneBadge} title="Uploaded directly, not from a job">Uploaded</span>
+        )}
       </div>
       <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
         <div>
-          <Link href={`/admin/jobs/${tile.jobId}`} style={jobLinkStyle}>
-            {tile.jobName}
-          </Link>
+          {tile.source === "job" && tile.jobId ? (
+            <Link href={`/admin/jobs/${tile.jobId}`} style={jobLinkStyle}>
+              {tile.jobName}
+            </Link>
+          ) : (
+            <div style={jobLinkStyle}>{tile.jobName}</div>
+          )}
           <div style={{ fontSize: 11, color: "var(--gray)", marginTop: 2 }}>
-            {tile.jobSuburb ?? "—"}{tile.jobDate ? ` · ${fmtDayShort(tile.jobDate)}` : ""}
+            {tile.source === "job"
+              ? `${tile.jobSuburb ?? "—"}${dateStr ? ` · ${dateStr}` : ""}`
+              : dateStr ? `Uploaded ${dateStr}` : "Uploaded"}
           </div>
         </div>
         <FeaturePhotoToggle
@@ -219,6 +271,9 @@ function PhotoTile({ tile }: { tile: Tile }) {
           storagePath={tile.storagePath}
           featured={tile.featured}
         />
+        {tile.source === "standalone" && (
+          <StandalonePhotoDelete storagePath={tile.storagePath} />
+        )}
       </div>
     </div>
   );
@@ -288,6 +343,12 @@ const featuredBadge: React.CSSProperties = {
   background: "var(--lime)", color: "var(--navy)",
   fontSize: 11, fontWeight: 800, letterSpacing: "0.4px",
   padding: "3px 10px", borderRadius: 999,
+};
+const standaloneBadge: React.CSSProperties = {
+  position: "absolute", bottom: 8, left: 8,
+  background: "rgba(15,27,45,0.85)", color: "white",
+  fontSize: 10, fontWeight: 800, letterSpacing: "0.6px",
+  padding: "3px 8px", borderRadius: 999,
 };
 const jobLinkStyle: React.CSSProperties = {
   fontWeight: 800, color: "var(--navy)", fontSize: 14,

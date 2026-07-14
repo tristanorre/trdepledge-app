@@ -9,7 +9,8 @@ import { useRouter } from "next/navigation";
 // disables the button without a hard blocking spinner.
 
 type Props = {
-  jobId: string;
+  // null for standalone uploads (photos not attached to a job).
+  jobId: string | null;
   kind: "before" | "after";
   storagePath: string;
   featured: boolean;
