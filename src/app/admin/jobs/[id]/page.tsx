@@ -13,6 +13,7 @@ import SendToXeroButton from "@/components/SendToXeroButton";
 import ReopenJobButton from "@/components/ReopenJobButton";
 import TimeLogEditor from "@/components/TimeLogEditor";
 import JobQuotePanel from "@/components/JobQuotePanel";
+import SendReviewRequestButton from "@/components/SendReviewRequestButton";
 import type { Job, WorkerListEntry } from "@/lib/types";
 import type { JobMaterialLine } from "@/lib/cost";
 import { calculateCost } from "@/lib/cost";
@@ -86,6 +87,16 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const cost = calculateCost(j, materials, rates);
   const isComplete = j.status === "completed";
+
+  // Review-request card only appears on completed jobs. One row per
+  // job (unique in the table); null while pending.
+  const { data: reviewReq } = isComplete
+    ? await supabase
+        .from("review_requests")
+        .select("sent_at, sent_via, responded_at, rating, private_feedback")
+        .eq("job_id", j.id)
+        .maybeSingle()
+    : { data: null as null };
 
   // Quote panel needs to know whether Xero is connected so the Send
   // button can be disabled with a helpful hint. Cheap lookup — one
@@ -233,6 +244,49 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           jobCompleted={j.status === "completed"}
         />
       </div>
+
+      {isComplete && (
+        <div style={{ ...cardStyle, marginTop: 20 }}>
+          <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--navy)", marginBottom: 12 }}>
+            Google review
+          </h3>
+          {reviewReq?.responded_at ? (
+            <div style={{ fontSize: 14, color: "var(--navy)", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div>
+                <strong>Client rated:</strong>{" "}
+                <span style={{ fontSize: 20, letterSpacing: 2, color: (reviewReq.rating ?? 0) >= 4 ? "#0F1B2D" : "#B91C1C" }}>
+                  {"★".repeat(reviewReq.rating ?? 0)}{"☆".repeat(5 - (reviewReq.rating ?? 0))}
+                </span>
+              </div>
+              {reviewReq.private_feedback && (
+                <div style={{ background: "#FEF3C7", padding: "10px 12px", borderRadius: 8, fontSize: 13, color: "#7A4C00", lineHeight: 1.5 }}>
+                  <em>&ldquo;{reviewReq.private_feedback}&rdquo;</em>
+                </div>
+              )}
+              <div style={{ fontSize: 12, color: "var(--gray)" }}>
+                {(reviewReq.rating ?? 0) >= 4
+                  ? "Redirected to your Google review form. Check Google Business for the public post."
+                  : "Kept private — did not touch Google. Follow up directly."}
+              </div>
+            </div>
+          ) : reviewReq?.sent_at ? (
+            <div style={{ fontSize: 14, color: "var(--navy)", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ color: "var(--gray)" }}>
+                Review request sent {new Date(reviewReq.sent_at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}
+                {reviewReq.sent_via && reviewReq.sent_via.length > 0 && ` · via ${reviewReq.sent_via.join(", ")}`}. Waiting for response.
+              </div>
+              <SendReviewRequestButton jobId={j.id} hasBeenSent={true} />
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 14, color: "var(--gray)" }}>
+                No review request has been sent for this job. (Auto-send fires when a job first completes; use this to send one manually.)
+              </div>
+              <SendReviewRequestButton jobId={j.id} hasBeenSent={false} />
+            </div>
+          )}
+        </div>
+      )}
 
       <div style={{ ...cardStyle, marginTop: 20 }}>
         <JobSmsPanel jobId={j.id} />

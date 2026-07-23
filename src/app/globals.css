@@ -689,6 +689,14 @@ footer {
 .gallery-hero .eyebrow { color: var(--navy); }
 .gallery-hero .eyebrow::before { background: var(--navy); }
 
+/* Feedback landing (marketing/feedback/[token]). Reuses the navy hero
+   voice — same treatment as the contact page but wider inner shell so
+   the star widget breathes. */
+.feedback-hero { background: var(--navy); padding: 80px 0 100px; text-align: center; min-height: 60vh; }
+.feedback-shell { max-width: 720px; margin: 0 auto; }
+.feedback-hero .eyebrow { justify-content: center; color: var(--lime); }
+.feedback-hero .eyebrow::before { background: var(--lime); }
+
 /* The global `* { margin: 0; padding: 0 }` reset strips list defaults
    site-wide, which the marketing nav + footer rely on. Restore them
    inside the privacy page so prose with bullets and paragraphs reads

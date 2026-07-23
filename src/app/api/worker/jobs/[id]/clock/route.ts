@@ -4,6 +4,7 @@ import type { JobStatus } from "@/lib/types";
 import type { BreakEntry, TimeEntry } from "@/lib/cost";
 import { checkWeeklyMilestones } from "@/lib/milestones";
 import { rollForwardRecurringJob, justCompleted } from "@/lib/recurring-jobs";
+import { maybeSendReviewOnCompletion } from "@/lib/reviews";
 
 export const runtime = "nodejs";
 
@@ -157,6 +158,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // milestone check above.
   if (justCompleted(job.status, patch.status as string | undefined)) {
     await rollForwardRecurringJob(supabase, params.id);
+    await maybeSendReviewOnCompletion(supabase, job.status, patch.status as string, params.id);
   }
 
   return NextResponse.json({ job: updated });

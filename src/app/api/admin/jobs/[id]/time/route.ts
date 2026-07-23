@@ -4,6 +4,7 @@ import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import type { JobStatus } from "@/lib/types";
 import { checkWeeklyMilestones } from "@/lib/milestones";
 import { rollForwardRecurringJob, justCompleted } from "@/lib/recurring-jobs";
+import { maybeSendReviewOnCompletion } from "@/lib/reviews";
 
 export const runtime = "nodejs";
 
@@ -187,6 +188,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   // the next recurring visit. No-op if not a recurring client.
   if (justCompleted(job.status, patch.status as string | undefined)) {
     await rollForwardRecurringJob(supabase, params.id);
+    await maybeSendReviewOnCompletion(supabase, job.status, patch.status as string, params.id);
   }
 
   revalidatePath(`/admin/jobs/${params.id}`);
