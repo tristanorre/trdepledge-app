@@ -94,7 +94,7 @@ export default function Nav() {
         >
           <span className="v16-credit-eyebrow">Website by</span>
           <Image
-            src="/images/TAJJPI-logo.png"
+            src="/images/tajjpi-logo2.png"
             alt="TAJJPI"
             className="v16-credit-logo"
             width={200}
