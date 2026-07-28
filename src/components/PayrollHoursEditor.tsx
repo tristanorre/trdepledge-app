@@ -23,9 +23,16 @@ type Worker = { id: string; name: string };
 type Props = {
   workers: Worker[];
   weekDates: string[];                          // Mon..Sun ISO dates
-  // Pre-loaded hours keyed by `${worker_id}|${YYYY-MM-DD}`. Missing
-  // entries mean 0 / not rostered.
+  // Manual overrides keyed by `${worker_id}|${YYYY-MM-DD}`. Missing
+  // entries mean "no override" — the cell falls back to clockedHours,
+  // or 0 if neither exists. These stick across roster re-saves.
   initialHours: Record<string, string>;
+  // Clocked hours from jobs.time_log, computed server-side and passed
+  // in as the default value for cells with no manual override. Same
+  // key shape as initialHours. Presence signals "worker actually
+  // worked N hours that day" — Thomas/Brad review and authorise by
+  // hitting Save (which converts them into manual overrides).
+  clockedHours?: Record<string, string>;
 };
 
 function parseHours(raw: string): number {
@@ -34,9 +41,13 @@ function parseHours(raw: string): number {
   return Math.min(24, Math.round(n * 100) / 100);
 }
 
-export default function PayrollHoursEditor({ workers, weekDates, initialHours }: Props) {
+export default function PayrollHoursEditor({
+  workers, weekDates, initialHours, clockedHours = {},
+}: Props) {
   const router = useRouter();
   // Editable map keyed by `${worker_id}|${date}` (same shape as input).
+  // Only holds MANUAL overrides — the clocked fallback lives in the
+  // clockedHours prop (immutable).
   const [hours, setHours] = useState<Record<string, string>>(initialHours);
   // Per-worker "saving" / "saved" / "error" state — keyed by worker_id.
   const [busy, setBusy] = useState<Record<string, "saving" | "saved" | string>>({});
@@ -46,8 +57,21 @@ export default function PayrollHoursEditor({ workers, weekDates, initialHours }:
     return `${workerId}|${date}`;
   }
 
+  // Value shown in the cell. Manual override wins; otherwise fall
+  // back to what the worker clocked. Both are strings so the input
+  // renders identically — the ONLY distinction is visual (see the
+  // `hasOverride` flag inside the render).
+  function displayValue(workerId: string, date: string): string {
+    const k = key(workerId, date);
+    if (hours[k] !== undefined) return hours[k];
+    return clockedHours[k] ?? "";
+  }
+  function hasOverride(workerId: string, date: string): boolean {
+    return hours[key(workerId, date)] !== undefined;
+  }
+
   function rowTotal(workerId: string, dates: string[]): number {
-    return dates.reduce((sum, d) => sum + parseHours(hours[key(workerId, d)] ?? ""), 0);
+    return dates.reduce((sum, d) => sum + parseHours(displayValue(workerId, d)), 0);
   }
 
   function setCell(workerId: string, date: string, raw: string) {
@@ -68,10 +92,17 @@ export default function PayrollHoursEditor({ workers, weekDates, initialHours }:
   async function saveRow(workerId: string) {
     setBusy((cur) => ({ ...cur, [workerId]: "saving" }));
     try {
-      const cells = weekDates.map((d) => ({
-        work_date: d,
-        hours: parseHours(hours[key(workerId, d)] ?? ""),
-      }));
+      // Save the effective value (override if present, else clocked)
+      // as a manual override. Effectively means "Thomas authorised
+      // these hours." If a cell shows nothing (no override, no
+      // clocked), we send null → server clears any lingering row.
+      const cells = weekDates.map((d) => {
+        const shown = displayValue(workerId, d);
+        return {
+          work_date: d,
+          hours: shown === "" ? null : parseHours(shown),
+        };
+      });
       const res = await fetch("/api/admin/paid-hours", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
@@ -145,9 +176,20 @@ export default function PayrollHoursEditor({ workers, weekDates, initialHours }:
                 <tr key={w.id}>
                   <td style={tdWorker}>{w.name}</td>
                   {weekDates.map((d, i) => {
-                    const v = hours[key(w.id, d)] ?? "";
+                    const v = displayValue(w.id, d);
+                    const override = hasOverride(w.id, d);
                     const isSet = parseHours(v) > 0;
                     const isWeekend = i >= 5;
+                    // Three visual states:
+                    //   1. Manual override (green / yellow-on-weekend) — Thomas has authorised this value
+                    //   2. Clocked pre-fill (soft blue) — worker actually clocked these hours; NOT yet authorised. Save to lock in.
+                    //   3. Empty (grey off) — no clocked data, no override
+                    const bg  = !isSet ? "var(--off)"
+                                : override ? (isWeekend ? "#FEF3C7" : "var(--lime)")
+                                : "#DBEAFE";
+                    const brd = !isSet ? "rgba(0,0,0,0.06)"
+                                : override ? (isWeekend ? "#FCD34D" : "var(--lime)")
+                                : "#93C5FD";
                     return (
                       <td key={d} style={tdCenter}>
                         <input
@@ -157,16 +199,17 @@ export default function PayrollHoursEditor({ workers, weekDates, initialHours }:
                           onChange={(e) => setCell(w.id, d, e.target.value)}
                           placeholder="—"
                           aria-label={`${w.name} ${DAY_LABELS[DAY_KEYS[i]]} paid hours`}
+                          title={
+                            !isSet ? "No hours"
+                            : override ? "Authorised (manual)"
+                            : "Clocked from job — save to authorise"
+                          }
                           style={{
                             ...hoursInput,
-                            background: isSet
-                              ? (isWeekend ? "#FEF3C7" : "var(--lime)")
-                              : "var(--off)",
+                            background: bg,
                             color: isSet ? "var(--navy)" : "var(--gray)",
                             fontWeight: isSet ? 800 : 500,
-                            borderColor: isSet
-                              ? (isWeekend ? "#FCD34D" : "var(--lime)")
-                              : "rgba(0,0,0,0.06)",
+                            borderColor: brd,
                           }}
                         />
                       </td>
@@ -227,9 +270,16 @@ export default function PayrollHoursEditor({ workers, weekDates, initialHours }:
         </table>
       </div>
 
-      <div style={{ marginTop: 12, fontSize: 12, color: "var(--gray)", lineHeight: 1.6 }}>
-        Pay-period total (Mon–Fri) is what gets exported to Xero. Weekend hours are tracked separately and not rolled in.
-        Edits here save as <strong>manual</strong> overrides — re-saving the roster won&apos;t overwrite them.
+      <div style={{ marginTop: 12, fontSize: 12, color: "var(--gray)", lineHeight: 1.6, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+          <LegendSwatch color="#DBEAFE" border="#93C5FD" label="Clocked from job — awaiting your Save" />
+          <LegendSwatch color="var(--lime)" border="var(--lime)" label="Authorised (manual)" />
+          <LegendSwatch color="#FEF3C7" border="#FCD34D" label="Weekend override" />
+        </div>
+        <div>
+          Pay-period total (Mon–Fri) is what gets exported to Xero. Weekend hours are tracked separately and not rolled in.
+          Hitting <strong>Save</strong> on a row locks the shown values in as manual overrides — re-saving the roster won&apos;t overwrite them.
+        </div>
       </div>
     </div>
   );
@@ -283,3 +333,20 @@ const emptyStyle: React.CSSProperties = {
   background: "white", borderRadius: 16, padding: 32,
   textAlign: "center", boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
 };
+
+function LegendSwatch({ color, border, label }: { color: string; border: string; label: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-block",
+          width: 16, height: 16, borderRadius: 4,
+          background: color,
+          border: `1.5px solid ${border}`,
+        }}
+      />
+      {label}
+    </span>
+  );
+}

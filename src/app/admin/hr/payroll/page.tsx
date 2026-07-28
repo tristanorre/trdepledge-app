@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import { mondayOfWeek, addDaysISO, todayISO, fmtWeekRange, weekDates } from "@/lib/dates";
 import PayrollHoursEditor from "@/components/PayrollHoursEditor";
+import { computeClockedHoursForWeek } from "@/lib/payroll-hours";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,8 @@ export default async function PayrollPage({
   const weekEndISO = dates[6];
 
   let workers: Worker[] = [];
-  let hoursLookup: Record<string, string> = {};
+  const hoursLookup: Record<string, string> = {};
+  let clockedLookup: Record<string, string> = {};
 
   if (supabase) {
     const [{ data: ws }, { data: hs }] = await Promise.all([
@@ -46,6 +48,20 @@ export default async function PayrollPage({
     for (const r of rawHours) {
       hoursLookup[`${r.worker_id}|${r.work_date}`] = String(r.hours);
     }
+
+    // Pull actual clocked hours (from every worker's jobs.time_log)
+    // so the payroll grid can pre-fill empty cells with what the crew
+    // really worked. Manual overrides always win — this is just the
+    // default when no override has been set.
+    const clocked = await computeClockedHoursForWeek(
+      supabase,
+      workers.map((w) => w.id),
+      dates[0],
+      weekEndISO,
+    );
+    clockedLookup = Object.fromEntries(
+      Object.entries(clocked).map(([k, v]) => [k, String(v)]),
+    );
   }
 
   return (
@@ -72,6 +88,7 @@ export default async function PayrollPage({
         workers={workers}
         weekDates={dates}
         initialHours={hoursLookup}
+        clockedHours={clockedLookup}
       />
 
       <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>

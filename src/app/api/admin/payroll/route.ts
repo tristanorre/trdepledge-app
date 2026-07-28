@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import { mondayOfWeek, addDaysISO, fmtDayShort } from "@/lib/dates";
+import { computeClockedHoursForWeek, clockedHoursKey } from "@/lib/payroll-hours";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,6 @@ export async function GET(req: Request) {
       .select("worker_id, work_date, hours, source")
       .gte("work_date", week_start)
       .lte("work_date", week_end)
-      .gt("hours", 0)
       .order("work_date", { ascending: true }),
   ]);
 
@@ -51,9 +51,17 @@ export async function GET(req: Request) {
   const rows: Row[] = [];
   const workerName = new Map((workers ?? []).map((w) => [w.id, w.name]));
 
+  // Layer 1 — everything in worker_paid_hours (manual overrides + any
+  // legacy roster-derived rows). These win over clocked hours.
+  const overriddenKeys = new Set<string>();
   for (const h of (rawHours ?? [])) {
     const name = workerName.get(h.worker_id);
     if (!name) continue; // worker no longer active or removed
+    overriddenKeys.add(clockedHoursKey(h.worker_id, h.work_date));
+    // Zero-hour overrides are legitimate ("rained out, don't pay") —
+    // don't emit them as CSV rows (Xero would just have a 0h line),
+    // but still track the key so they suppress the clocked default.
+    if (Number(h.hours) <= 0) continue;
     rows.push({
       worker_id: h.worker_id,
       worker_name: name,
@@ -62,6 +70,35 @@ export async function GET(req: Request) {
       source: h.source ?? "manual",
     });
   }
+
+  // Layer 2 — for every (worker, day) with no override, fall back to
+  // what the worker actually clocked on that day. This is the same
+  // computation the UI shows in the "Clocked, awaiting Save" cells.
+  const clocked = await computeClockedHoursForWeek(
+    supabase,
+    Array.from(workerName.keys()),
+    week_start,
+    week_end,
+  );
+  for (const [key, hours] of Object.entries(clocked)) {
+    if (overriddenKeys.has(key)) continue;
+    if (hours <= 0) continue;
+    const [worker_id, work_date] = key.split("|");
+    const name = workerName.get(worker_id);
+    if (!name) continue;
+    rows.push({
+      worker_id,
+      worker_name: name,
+      work_date,
+      hours,
+      source: "auto_from_clock",
+    });
+  }
+  rows.sort((a, b) =>
+    a.work_date === b.work_date
+      ? a.worker_name.localeCompare(b.worker_name)
+      : a.work_date.localeCompare(b.work_date),
+  );
 
   if (format === "csv") {
     const header = ["Worker", "Date", "Day", "Hours", "Source"];

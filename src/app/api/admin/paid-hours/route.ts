@@ -6,16 +6,19 @@ export const runtime = "nodejs";
 // PATCH /api/admin/paid-hours
 //   Body: {
 //     worker_id: uuid,
-//     cells: Array<{ work_date: YYYY-MM-DD, hours: number }>
+//     cells: Array<{ work_date: YYYY-MM-DD, hours: number | null }>
 //   }
 //
 // Used by the payroll review screen for per-worker, per-week saves
-// after Thomas tweaks daily hours. Each cell is either:
-//   * hours > 0 → upsert with source='manual' (sticks across roster
-//                  re-saves)
-//   * hours = 0 → delete the row (regardless of source — Thomas is
-//                  explicitly zeroing a day on the payroll screen,
-//                  so erase it even if it was previously rostered)
+// after Thomas tweaks daily hours. Each cell is one of:
+//   * hours: number ≥ 0 → upsert with source='manual'. An explicit 0
+//                          is a legitimate authorised value (e.g. crew
+//                          got rained out and shouldn't be paid for
+//                          the day even though they clocked in).
+//   * hours: null       → delete the row. Means "no manual override";
+//                          the payroll grid falls back to clocked
+//                          hours (or 0 if none). This is the "reset
+//                          to auto" path.
 //
 // Per-cell granularity means the save call only touches the worker
 // Thomas just edited, not the whole grid.
@@ -48,12 +51,21 @@ export async function PATCH(req: Request) {
     const c = raw as Record<string, unknown>;
     const work_date = String(c.work_date ?? "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(work_date)) continue;
-    const n = typeof c.hours === "number" ? c.hours : parseFloat(String(c.hours ?? ""));
-    if (!Number.isFinite(n) || n <= 0) {
+    // Null explicitly signals "clear the override". A missing/
+    // unparseable value is also treated as null, since the historical
+    // client wouldn't send an intentional null.
+    if (c.hours === null || c.hours === undefined) {
+      toDelete.push(work_date);
+      continue;
+    }
+    const n = typeof c.hours === "number" ? c.hours : parseFloat(String(c.hours));
+    if (!Number.isFinite(n) || n < 0) {
       toDelete.push(work_date);
       continue;
     }
     // Clamp to 24h to satisfy the CHECK constraint, and round to 2dp.
+    // Zero is a legitimate authorised value (see route comment) — it
+    // takes the upsert path so it beats the clocked-hour default.
     toUpsert.push({
       work_date,
       hours: Math.min(24, Math.round(n * 100) / 100),
