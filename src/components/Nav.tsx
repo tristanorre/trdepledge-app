@@ -80,10 +80,11 @@ export default function Nav() {
           </span>
         </a>
 
-        {/* Credit — three stacked lines pinned to the far right of the
-            nav. Links out to tajjpi.com.au (rel=noopener since it's a
-            new tab away from our domain). Hidden on narrow widths where
-            the hamburger needs the room. */}
+        {/* Credit — "Website by" eyebrow above the TAJJPI logo,
+            pinned to the far right of the nav. Logo is a clickable
+            image linking out to tajjpi.com.au (rel=noopener since
+            it's a new tab away from our domain). Hidden on narrow
+            widths where the hamburger needs the room. */}
         <a
           href="https://www.tajjpi.com.au"
           target="_blank"
@@ -92,8 +93,13 @@ export default function Nav() {
           aria-label="Website by TAJJPI — opens tajjpi.com.au in a new tab"
         >
           <span className="v16-credit-eyebrow">Website by</span>
-          <span className="v16-credit-brand">TAJJPI</span>
-          <span className="v16-credit-url">www.tajjpi.com.au</span>
+          <Image
+            src="/images/TAJJPI-logo.png"
+            alt="TAJJPI"
+            className="v16-credit-logo"
+            width={200}
+            height={180}
+          />
         </a>
 
         <button
