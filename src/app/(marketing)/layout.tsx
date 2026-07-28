@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import ScrollTop from "@/components/ScrollTop";
@@ -39,6 +40,20 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <main>{children}</main>
       <Footer />
       <ScrollTop />
+      {/*
+        Doug — the site chatbot. Widget lives in /public/embed.js,
+        talks only to /api/enquiry (same-origin). Loaded lazily so
+        first-paint isn't blocked. Only appears on marketing pages —
+        this layout wraps the (marketing) route group, so /admin
+        and /worker never render it.
+      */}
+      <Script
+        id="doug-widget"
+        src="/embed.js"
+        strategy="lazyOnload"
+        data-endpoint="/api/enquiry"
+        data-logo="/images/Doug.png"
+      />
     </>
   );
 }
