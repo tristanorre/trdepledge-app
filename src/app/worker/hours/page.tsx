@@ -5,7 +5,7 @@ import {
   todayISO, mondayOfWeek, addDaysISO, weekDates,
   fmtDayShort, fmtWeekRange, dayKeyOf, toISODate,
 } from "@/lib/dates";
-import { hoursForEntry, type TimeEntry } from "@/lib/cost";
+import { hoursForEntry, sessionsOf } from "@/lib/cost";
 import type { Job } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +38,11 @@ function fmtHM(hours: number): string {
 type DayBucket = {
   iso: string;
   hours: number;
-  jobCount: number;
   hasOpenShift: boolean; // worker still clocked in on this day
-  jobs: Array<{ jobId: string; clientName: string; hours: number; open: boolean }>;
+  // Keyed by jobId so two sessions on the SAME job on the SAME day
+  // aggregate into one entry (jobCount doesn't inflate). Rendered as
+  // an ordered list by insertion order.
+  jobsByJobId: Map<string, { jobId: string; clientName: string; hours: number; open: boolean; sessionCount: number }>;
 };
 
 export default async function WorkerHoursPage({
@@ -84,23 +86,41 @@ export default async function WorkerHoursPage({
   function bucketFor(iso: string): DayBucket {
     const existing = buckets.get(iso);
     if (existing) return existing;
-    const next: DayBucket = { iso, hours: 0, jobCount: 0, hasOpenShift: false, jobs: [] };
+    const next: DayBucket = { iso, hours: 0, hasOpenShift: false, jobsByJobId: new Map() };
     buckets.set(iso, next);
     return next;
   }
 
+  // Workers can have MULTIPLE sessions per job now (leave to attend
+  // another job, come back later). Iterate every session per worker
+  // per job and bucket each one by its own start-date. Sessions on
+  // the same job the same day roll up into a single job line.
   for (const j of jobs) {
-    const entry = (j.time_log?.[session.user.id] ?? undefined) as TimeEntry | undefined;
-    if (!entry?.start) continue;
-    const startISO = toISODate(new Date(entry.start));
-    const hours = hoursForEntry(entry);
-    if (hours <= 0) continue;
-    const isOpen = !entry.end;
-    const b = bucketFor(startISO);
-    b.hours += hours;
-    b.jobCount += 1;
-    b.hasOpenShift = b.hasOpenShift || isOpen;
-    b.jobs.push({ jobId: j.id, clientName: j.client_name, hours, open: isOpen });
+    const sessions = sessionsOf(j.time_log?.[session.user.id]);
+    for (const entry of sessions) {
+      if (!entry?.start) continue;
+      const startISO = toISODate(new Date(entry.start));
+      const hours = hoursForEntry(entry);
+      if (hours <= 0) continue;
+      const isOpen = !entry.end;
+      const b = bucketFor(startISO);
+      b.hours += hours;
+      b.hasOpenShift = b.hasOpenShift || isOpen;
+      const jobRow = b.jobsByJobId.get(j.id);
+      if (jobRow) {
+        jobRow.hours += hours;
+        jobRow.open = jobRow.open || isOpen;
+        jobRow.sessionCount += 1;
+      } else {
+        b.jobsByJobId.set(j.id, {
+          jobId: j.id,
+          clientName: j.client_name,
+          hours,
+          open: isOpen,
+          sessionCount: 1,
+        });
+      }
+    }
   }
 
   const allWeekDates = weekDates(weekStart);
@@ -211,7 +231,8 @@ function DayRow({ iso, bucket, isToday }: { iso: string; bucket: DayBucket | und
   const dayKey = dayKeyOf(iso);
   const isWeekend = dayKey === "sat" || dayKey === "sun";
   const hours = bucket?.hours ?? 0;
-  const jobCount = bucket?.jobCount ?? 0;
+  const jobs = bucket ? Array.from(bucket.jobsByJobId.values()) : [];
+  const jobCount = jobs.length;
   const empty = hours <= 0;
 
   return (
@@ -236,7 +257,7 @@ function DayRow({ iso, bucket, isToday }: { iso: string; bucket: DayBucket | und
           <div style={{ fontSize: 13, color: "var(--gray)", fontStyle: "italic" }}>No hours logged</div>
         ) : (
           <>
-            {bucket!.jobs.map((j) => (
+            {jobs.map((j) => (
               <div key={j.jobId} style={{
                 display: "flex", justifyContent: "space-between", gap: 8,
                 fontSize: 13, color: "var(--navy)", padding: "2px 0",
@@ -246,7 +267,11 @@ function DayRow({ iso, bucket, isToday }: { iso: string; bucket: DayBucket | und
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   flex: 1, minWidth: 0,
                 }}>
-                  {j.clientName}{j.open && <span style={openTagStyle}>live</span>}
+                  {j.clientName}
+                  {j.sessionCount > 1 && (
+                    <span style={sessionTagStyle}>×{j.sessionCount}</span>
+                  )}
+                  {j.open && <span style={openTagStyle}>live</span>}
                 </Link>
                 <span style={{ color: "var(--gray)", flex: "0 0 auto" }}>{fmtHM(j.hours)}</span>
               </div>
@@ -313,6 +338,15 @@ const openTagStyle: React.CSSProperties = {
   background: "rgba(255,229,0,0.18)", color: "#857200",
   fontSize: 10, fontWeight: 800, letterSpacing: "0.5px",
   textTransform: "uppercase",
+  padding: "1px 6px", borderRadius: 999,
+  verticalAlign: "middle",
+};
+// Small "×N" tag when a worker has multiple sessions on the same
+// job the same day (left → came back later).
+const sessionTagStyle: React.CSSProperties = {
+  display: "inline-block", marginLeft: 6,
+  background: "rgba(26,79,181,0.10)", color: "#1A4FB5",
+  fontSize: 10, fontWeight: 800,
   padding: "1px 6px", borderRadius: 999,
   verticalAlign: "middle",
 };
