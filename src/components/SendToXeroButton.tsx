@@ -47,9 +47,11 @@ export default function SendToXeroButton({
 
   async function send() {
     if (!confirm(
-      "Send this job's invoice to Xero as a draft?\n\n" +
-      "The descriptions below are what will appear on the customer invoice.\n" +
-      "You'll still review and Approve inside Xero before it goes out.",
+      "Approve this invoice and send to Xero?\n\n" +
+      "The line descriptions below are what will appear on the customer invoice.\n\n" +
+      "After you click OK, it lands in Xero as a DRAFT. You'll then need to open\n" +
+      "Xero and click Approve there — Xero emails the invoice to the customer at\n" +
+      "that point, not before.",
     )) return;
     setBusy(true);
     setError(null);
@@ -107,9 +109,15 @@ export default function SendToXeroButton({
 
   return (
     <div>
-      <div style={{ fontSize: 12, color: "var(--gray)", marginBottom: 10, lineHeight: 1.5 }}>
-        Edit any description below before sending. Quantities and prices come from the cost
-        breakdown above — to change those, edit the time log or materials list and reload.
+      <div style={reviewNoteStyle}>
+        <strong>Review this invoice before it goes to Xero.</strong> Edit any description below.
+        Quantities and prices come from the cost breakdown above — to change those, edit the
+        time log or materials list and reload.
+        <div style={{ marginTop: 6, color: "var(--gray)" }}>
+          Two-step approval: <strong>Approve here</strong> to land it in Xero as a draft,
+          then <strong>Approve inside Xero</strong> — that's the step that emails the invoice
+          to the customer.
+        </div>
       </div>
 
       <div style={tableWrap}>
@@ -147,10 +155,10 @@ export default function SendToXeroButton({
 
       <div style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button type="button" onClick={send} disabled={busy} style={primaryBtn}>
-          {busy ? "Sending…" : "Send to Xero →"}
+          {busy ? "Sending…" : "Approve & Send to Xero →"}
         </button>
         <span style={{ fontSize: 12, color: "var(--gray)" }}>
-          Lands in Xero as <strong>DRAFT</strong> — review + Approve there before it goes to the customer.
+          Then open Xero and <strong>Approve</strong> the draft — that's when it emails to the customer.
         </span>
       </div>
 
@@ -186,6 +194,14 @@ const primaryBtn: React.CSSProperties = {
   padding: "12px 20px", fontSize: 14, fontWeight: 800,
   cursor: "pointer", minHeight: 44,
   display: "inline-flex", alignItems: "center", gap: 6,
+};
+const reviewNoteStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  background: "rgba(255,229,0,0.14)",
+  border: "1px solid rgba(133,114,0,0.18)",
+  borderRadius: 8,
+  fontSize: 12, color: "var(--navy)",
+  marginBottom: 12, lineHeight: 1.5,
 };
 const sentBoxStyle: React.CSSProperties = {
   background: "rgba(34,134,58,0.10)", border: "1px solid rgba(34,134,58,0.25)",

@@ -191,7 +191,12 @@ export default function JobQuotePanel({
       setError("Set hours-per-worker and worker count first.");
       return;
     }
-    if (!confirm(`Send a draft quote to Xero for ${fmtMoney(estimate.totalCents)}? Xero will email the customer the PDF once you click Send inside Xero.`)) {
+    if (!confirm(
+      `Approve this quote and send to Xero for ${fmtMoney(estimate.totalCents)}?\n\n` +
+      `After you click OK, it lands in Xero as a DRAFT. You'll then need to open Xero\n` +
+      `and click Send there — Xero emails the quote PDF to the customer at that point,\n` +
+      `not before.`,
+    )) {
       return;
     }
     // Save first so the PATCH-then-send is atomic from Thomas's POV.
@@ -297,6 +302,15 @@ export default function JobQuotePanel({
 
       {!alreadySent && validEstimate && previewLines.length > 0 && (
         <div style={previewWrapStyle}>
+          <div style={reviewNoteStyle}>
+            <strong>Review this quote before it goes to Xero.</strong> Edit any description
+            below. Qty + pricing come from the estimate + materials above.
+            <div style={{ marginTop: 6, color: "var(--gray)" }}>
+              Two-step approval: <strong>Approve here</strong> to land it in Xero as a draft,
+              then <strong>Send inside Xero</strong> — that's the step that emails the quote
+              to the customer.
+            </div>
+          </div>
           <div style={previewHeaderStyle}>
             Quote lines going to Xero — edit any description before sending
           </div>
@@ -362,7 +376,7 @@ export default function JobQuotePanel({
                 : ""
             }
           >
-            {busy === "send" ? "Sending…" : "Send Quote to Xero →"}
+            {busy === "send" ? "Sending…" : "Approve & Send Quote to Xero →"}
           </button>
         </div>
       )}
@@ -481,6 +495,14 @@ const errorStyle: React.CSSProperties = {
 // across the invoice + quote flows).
 const previewWrapStyle: React.CSSProperties = {
   marginTop: 16,
+};
+const reviewNoteStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  background: "rgba(255,229,0,0.14)",
+  border: "1px solid rgba(133,114,0,0.18)",
+  borderRadius: 8,
+  fontSize: 12, color: "var(--navy)",
+  marginBottom: 12, lineHeight: 1.5,
 };
 const previewHeaderStyle: React.CSSProperties = {
   fontSize: 11, fontWeight: 800, color: "var(--gray)",
