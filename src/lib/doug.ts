@@ -23,18 +23,21 @@ export const RATE_LIMIT_PER_MINUTE = 30;
 // the same admin queue with the same shape.
 export const DOUG_SYSTEM_PROMPT = `You are Doug, the cheeky galah mascot who "supervises" Thomas Depledge at T.R. Depledge Gardening & Maintenance (based in Wallaroo, SA — serving the entire Yorke Peninsula, including Kadina and Moonta). You're warm, broad-Aussie, and human-sounding — but you are NOT a general-purpose chatbot. You are a lead-capture form in conversation form. Every reply either asks for a missing detail or submits the completed enquiry.
 
-# The 8 fields you MUST collect
+# The 11 fields you MUST collect
 
-Every enquiry needs ALL EIGHT of these before you set ready_to_capture = true. No exceptions.
+Every enquiry needs ALL ELEVEN of these before you set ready_to_capture = true. No exceptions.
 
-  1. first_name     — Their first name.
-  2. last_name      — Their last name / surname.
-  3. email          — Their email address.
-  4. phone          — An Australian phone number.
-  5. suburb         — Town or suburb the job is at.
-  6. service_type   — What work they need (mowing, hedge trim, tidy-up, etc.).
-  7. client_type    — Private, NDIS, Aged Care, or Commercial. If unclear, ASK.
-  8. message        — A rough description of the job (property size, condition, timeframe).
+  1.  first_name    — Their first name.
+  2.  last_name     — Their last name / surname.
+  3.  email         — Their email address.
+  4.  phone         — An Australian phone number.
+  5.  address       — Full street address (house number + street name). Not just the suburb — Thomas needs to actually turn up at the right house. If they only give a suburb, ASK for the street address.
+  6.  suburb        — Town or suburb the job is at.
+  7.  postcode      — 4-digit Australian postcode. Ask for it if not volunteered; if they truly don't know, capture "0000" and Thomas will chase.
+  8.  service_type  — What work they need (mowing, hedge trim, tidy-up, ongoing maintenance, etc.).
+  9.  client_type   — Private, NDIS, Aged Care, or Commercial. If unclear, ASK.
+  10. frequency     — one_off, weekly, fortnightly, monthly, or ongoing. ALWAYS ask ("Is this a one-off job or something you'd like on regular basis?"). Never guess.
+  11. message       — A rough description of the job (property size, condition, timeframe, access notes like dogs or gate code, anything Thomas needs).
 
 # THE CRITICAL RULE — never stop mid-conversation
 
@@ -50,17 +53,20 @@ Even if they've just given you great info, you MUST push straight into the next 
 
 Before you write ANY reply, silently run this checklist:
 
-  - Do I have first_name? (if no → ask for it in this reply)
-  - Do I have last_name? (if no → ask for it in this reply)
-  - Do I have email? (if no → ask for it in this reply)
-  - Do I have phone? (if no → ask for it in this reply)
-  - Do I have suburb? (if no → ask for it in this reply)
+  - Do I have first_name?   (if no → ask for it in this reply)
+  - Do I have last_name?    (if no → ask for it in this reply)
+  - Do I have email?        (if no → ask for it in this reply)
+  - Do I have phone?        (if no → ask for it in this reply)
+  - Do I have address?      (STREET + number, not just the suburb — if no or only suburb → ask)
+  - Do I have suburb?       (if no → ask for it in this reply)
+  - Do I have postcode?     (if no → ask for it in this reply)
   - Do I have service_type? (if no → ask for it in this reply)
-  - Do I have client_type? (if no → ask for it in this reply)
-  - Do I have message? (if no → ask for it in this reply)
+  - Do I have client_type?  (if no → ask for it in this reply)
+  - Do I have frequency?    (one-off vs regular — if no → ASK EXPLICITLY, never guess)
+  - Do I have message?      (job details — if no → ask for it in this reply)
 
 If ANY item is missing, this reply MUST ask for it. Pick the most natural next missing one and ask.
-If all 8 are present, this reply says "brilliant, Thomas will be in touch shortly" and calls capture_enquiry with ready_to_capture = true.
+If all 11 are present, this reply says "brilliant, Thomas will be in touch shortly" and calls capture_enquiry with ready_to_capture = true.
 
 # Tool call rhythm
 
@@ -109,11 +115,14 @@ export const CAPTURE_ENQUIRY_TOOL = {
       last_name:        { type: "string", description: "Visitor's last name / surname. Ask if they only gave one name — the admin CRM needs both." },
       email:            { type: "string", description: "Visitor's email address." },
       phone:            { type: "string", description: "Visitor's phone number. Australian mobile or landline (e.g. 04XX XXX XXX)." },
+      address:          { type: "string", description: "Full street address (house/unit number + street name). NOT just the suburb — Thomas needs to actually turn up at the right house. If they only give a suburb, ask for the street address." },
       suburb:           { type: "string", description: "Town or suburb the job is in (e.g. Wallaroo, Kadina, Moonta, Port Hughes)." },
+      postcode:         { type: "string", description: "4-digit Australian postcode. If truly unknown, capture \"0000\" and Thomas will chase." },
       service_type:     { type: "string", description: "What work they need. Free text (e.g. \"lawn mowing\", \"hedge trim\", \"garden tidy-up\", \"ongoing fortnightly maintenance\")." },
       client_type:      { type: "string", enum: ["Private", "NDIS", "Aged Care", "Commercial"], description: "Client category. Default is 'Private'. Pick 'NDIS' or 'Aged Care' if they mention NDIS support, aged-care package, plan manager, etc. 'Commercial' for businesses/strata." },
-      message:          { type: "string", description: "Free-text description of the job — property size, condition, timeframe, anything Thomas needs to know to quote." },
-      ready_to_capture: { type: "boolean", description: "True once you've got name + email OR phone + suburb + service_type + message. This is the signal that Thomas should be notified." },
+      frequency:        { type: "string", enum: ["one_off", "weekly", "fortnightly", "monthly", "ongoing"], description: "How often the job runs. 'one_off' = single visit. 'weekly'/'fortnightly'/'monthly' = ongoing at that cadence. 'ongoing' = they want it regular but haven't specified how often yet. ALWAYS ASK — never guess." },
+      message:          { type: "string", description: "Free-text description of the job — property size, condition, timeframe, access notes (dogs, gate code), anything Thomas needs to know to quote." },
+      ready_to_capture: { type: "boolean", description: "True ONLY once you've got ALL 11 required fields captured. The app rejects premature ready_to_capture=true and will not insert the enquiry — you'd just look silly. Ask the next missing question instead." },
       conversation_complete: { type: "boolean", description: "True once the handoff is done and the chat has naturally ended." },
     },
     required: [],
@@ -125,9 +134,12 @@ export type CapturedEnquiry = {
   last_name?: string;
   email?: string;
   phone?: string;
+  address?: string;
   suburb?: string;
+  postcode?: string;
   service_type?: string;
   client_type?: "Private" | "NDIS" | "Aged Care" | "Commercial";
+  frequency?: "one_off" | "weekly" | "fortnightly" | "monthly" | "ongoing";
   message?: string;
   ready_to_capture?: boolean;
   conversation_complete?: boolean;
@@ -154,12 +166,13 @@ export function mergeCapture(
   return merged;
 }
 
-// The 8 required fields. Kept as a single source of truth so the
+// The 11 required fields. Kept as a single source of truth so the
 // system prompt, tool schema, server validation, and admin UI all
 // agree on what "complete" means.
 export const REQUIRED_CAPTURE_FIELDS = [
   "first_name", "last_name", "email", "phone",
-  "suburb", "service_type", "client_type", "message",
+  "address", "suburb", "postcode",
+  "service_type", "client_type", "frequency", "message",
 ] as const satisfies ReadonlyArray<keyof CapturedEnquiry>;
 
 // Returns the list of required fields that are still missing from
@@ -215,9 +228,12 @@ export function formatEnquiryEmail(args: {
     `Name:         ${name}`,
     `Phone:        ${c.phone ?? "—"}`,
     `Email:        ${c.email ?? "—"}`,
+    `Address:      ${c.address ?? "—"}`,
     `Suburb:       ${suburb}`,
+    `Postcode:     ${c.postcode ?? "—"}`,
     `Service:      ${c.service_type ?? "—"}`,
     `Client type:  ${c.client_type ?? "Private"}`,
+    `Frequency:    ${frequencyLabel(c.frequency)}`,
     `Job details:  ${c.message ?? "—"}`,
   ];
 
@@ -319,13 +335,29 @@ const DOUG_SYSTEM_NOTE_AUTHOR = {
   author_name: "Doug (chatbot)",
 };
 
+// Human-readable label for the frequency enum, for display in
+// the note + notification email. Keeps the DB clean while the
+// admin sees "One-off" not "one_off".
+export function frequencyLabel(f?: string): string {
+  switch (f) {
+    case "one_off":     return "One-off";
+    case "weekly":      return "Ongoing — weekly";
+    case "fortnightly": return "Ongoing — fortnightly";
+    case "monthly":     return "Ongoing — monthly";
+    case "ongoing":     return "Ongoing (cadence TBC)";
+    default:            return "Not specified";
+  }
+}
+
 // Build the jobs row Doug inserts alongside the enquiries row. Status
 // is 'pending_review' so it lands in the admin "For review" tab where
 // Thomas can quote / schedule / cancel from.
 export function buildJobRow(c: CapturedEnquiry): {
   client_name: string;
   client_type: "Private" | "NDIS" | "Aged Care";
+  address: string | null;
   suburb: string | null;
+  postcode: string | null;
   description: string;
   status: "pending_review";
   notes: Array<{ author_id: string; author_name: string; text: string; timestamp: string }>;
@@ -336,20 +368,27 @@ export function buildJobRow(c: CapturedEnquiry): {
   const service = c.service_type?.trim() || "General enquiry";
   const message = c.message?.trim() || "(no description provided)";
 
-  // Contact + Doug marker as the first note so Thomas has phone/
-  // email at hand without opening the enquiry cross-reference.
+  // Contact + frequency + Doug marker as the first note so Thomas
+  // has phone / email / one-off-vs-ongoing at hand without opening
+  // the enquiry cross-reference.
   const contactNote =
     `Captured via Doug (website chatbot).\n\n` +
     `Contact: ${name}\n` +
     `Phone: ${c.phone?.trim() || "—"}\n` +
     `Email: ${c.email?.trim() || "—"}\n` +
-    `Client type (as told): ${c.client_type ?? "Private"}`;
+    `Address: ${c.address?.trim() || "—"}\n` +
+    `Suburb: ${c.suburb?.trim() || "—"}\n` +
+    `Postcode: ${c.postcode?.trim() || "—"}\n` +
+    `Client type (as told): ${c.client_type ?? "Private"}\n` +
+    `Frequency: ${frequencyLabel(c.frequency)}`;
 
   return {
     client_name:  name,
     client_type:  jobClientType(c.client_type),
+    address:      c.address?.trim() || null,
     suburb:       c.suburb?.trim() || null,
-    description:  `${service} — ${message}`,
+    postcode:     c.postcode?.trim() || null,
+    description:  `${service} (${frequencyLabel(c.frequency)}) — ${message}`,
     status:       "pending_review",
     notes: [{
       ...DOUG_SYSTEM_NOTE_AUTHOR,

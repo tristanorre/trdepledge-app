@@ -380,9 +380,12 @@ const HUMAN_FIELD_NAMES: Record<string, string> = {
   last_name:    "last name",
   email:        "email address",
   phone:        "phone number",
+  address:      "street address (number and street name)",
   suburb:       "suburb",
+  postcode:     "postcode",
   service_type: "service type — mowing, hedges, tidy-up?",
   client_type:  "client type — Private, NDIS, Aged Care, or Commercial?",
+  frequency:    "frequency — one-off or ongoing (weekly, fortnightly, monthly)?",
   message:      "a quick description of the job",
 };
 
