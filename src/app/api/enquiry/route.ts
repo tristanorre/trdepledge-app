@@ -1,10 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type {
+  Message as AnthropicMessage,
+  MessageParam,
+  ToolUseBlock,
+  ToolResultBlockParam,
+} from "@anthropic-ai/sdk/resources/messages";
 import { sendEmail } from "@/lib/email";
 import { getServiceClient } from "@/lib/supabase";
 import {
   DOUG_MODEL, DOUG_MAX_TOKENS, DOUG_SYSTEM_PROMPT,
   CAPTURE_ENQUIRY_TOOL, mergeCapture, formatEnquiryEmail,
-  buildEnquiryRow, buildJobRow,
+  buildEnquiryRow, buildJobRow, missingCaptureFields, isCaptureComplete,
   MAX_MESSAGES, MAX_MESSAGE_CHARS, MAX_BODY_BYTES, RATE_LIMIT_PER_MINUTE,
   type CapturedEnquiry,
 } from "@/lib/doug";
@@ -156,43 +162,80 @@ export async function POST(req: Request) {
 
   const client = new Anthropic({ apiKey });
 
-  let modelResp;
+  // Agentic tool-use loop. Claude 4-family emits tool calls with
+  // stop_reason='tool_use' and expects a tool_result before
+  // producing the next visitor-facing text. Previously we made ONE
+  // call and used a canned "Righto…" fallback whenever the response
+  // was tool-only — which led Doug to appear to end the conversation
+  // the moment he called capture_enquiry, even mid-intake. This
+  // loop pretends every capture_enquiry call succeeded and lets the
+  // model produce its actual next question.
+  const conversation: MessageParam[] = parsed.map((m) => ({ role: m.role, content: m.content }));
+  let reply = "";
+  let newCapture: CapturedEnquiry = { ...prevCapture };
+  let toolCalledThisTurn = false;
+  const MAX_TOOL_ROUNDS = 4;
+
   try {
-    // IMPORTANT: no `temperature` parameter — claude-opus-4-8 rejects
-    // it with a 400 (documented in the build brief §2). Do not add.
-    modelResp = await client.messages.create({
-      model: DOUG_MODEL,
-      max_tokens: DOUG_MAX_TOKENS,
-      system: DOUG_SYSTEM_PROMPT,
-      tools: [CAPTURE_ENQUIRY_TOOL],
-      messages: parsed.map((m) => ({ role: m.role, content: m.content })),
-    });
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      // IMPORTANT: no `temperature` parameter — claude-opus-4-8 rejects
+      // it with a 400 (documented in the build brief §2). Do not add.
+      const modelResp: AnthropicMessage = await client.messages.create({
+        model: DOUG_MODEL,
+        max_tokens: DOUG_MAX_TOKENS,
+        system: DOUG_SYSTEM_PROMPT,
+        tools: [CAPTURE_ENQUIRY_TOOL],
+        messages: conversation,
+      });
+
+      const toolUses: ToolUseBlock[] = [];
+      for (const block of modelResp.content) {
+        if (block.type === "text") {
+          reply += block.text;
+        } else if (block.type === "tool_use") {
+          toolUses.push(block);
+          if (block.name === "capture_enquiry") {
+            toolCalledThisTurn = true;
+            const input = (block.input ?? {}) as Partial<CapturedEnquiry>;
+            newCapture = mergeCapture(newCapture, input);
+          }
+        }
+      }
+
+      // If the model didn't ask for a tool result, the turn is over.
+      if (modelResp.stop_reason !== "tool_use" || toolUses.length === 0) break;
+
+      // Feed a synthetic success result back so the model produces
+      // its next visitor-facing text. Every capture_enquiry returns
+      // {ok:true} — the app is the source of truth for validity, not
+      // the tool's return.
+      conversation.push({ role: "assistant", content: modelResp.content });
+      const toolResults: ToolResultBlockParam[] = toolUses.map((tu) => ({
+        type: "tool_result",
+        tool_use_id: tu.id,
+        content: JSON.stringify({ ok: true }),
+      }));
+      conversation.push({ role: "user", content: toolResults });
+    }
   } catch (err) {
     console.error("[enquiry] anthropic call failed", err);
     return jsonError(502, "Sorry — Doug's on smoko for a sec. Try again in a moment.", cors);
   }
 
-  // Walk the model's response — collect text blocks for the reply,
-  // and merge any tool_use blocks into the running capture.
-  let reply = "";
-  let newCapture: CapturedEnquiry = { ...prevCapture };
-  let toolCalledThisTurn = false;
-  for (const block of modelResp.content) {
-    if (block.type === "text") {
-      reply += block.text;
-    } else if (block.type === "tool_use" && block.name === "capture_enquiry") {
-      toolCalledThisTurn = true;
-      const input = (block.input ?? {}) as Partial<CapturedEnquiry>;
-      newCapture = mergeCapture(newCapture, input);
-    }
+  // SERVER-SIDE guard: only persist when the capture actually has
+  // every required field with a non-empty value. The model can (and
+  // has) set ready_to_capture=true prematurely — the app is the
+  // final authority on whether an enquiry is complete enough to
+  // insert. If the model claims ready_to_capture=true but fields
+  // are missing, we ignore the flag, log the discrepancy, and let
+  // the conversation continue.
+  const missing = missingCaptureFields(newCapture);
+  const complete = isCaptureComplete(newCapture);
+  const modelSaysReady = newCapture.ready_to_capture === true;
+  if (modelSaysReady && !complete) {
+    console.warn("[enquiry] model set ready_to_capture=true but fields missing:", missing);
   }
-
-  // Persist + notify the FIRST time Doug flips ready_to_capture=true.
-  // Subsequent tool calls re-write ready_to_capture=true; the
-  // enquiry_id sentinel below prevents duplicate DB rows and
-  // duplicate emails. Doug can still edit the row later by calling
-  // the tool again — the app UPDATE-s in place using enquiry_id.
-  const nowReady = newCapture.ready_to_capture === true;
+  const nowReady = modelSaysReady && complete;
   const alreadySaved = !!newCapture.enquiry_id;
 
   if (toolCalledThisTurn && nowReady) {
@@ -291,22 +334,45 @@ export async function POST(req: Request) {
     }
   }
 
-  // Empty reply is a red flag — model returned only a tool call with
-  // no follow-up text. Substitute a warm fallback so the visitor
-  // isn't left staring at silence.
+  // Empty reply is still possible in edge cases (agentic loop hit
+  // MAX_TOOL_ROUNDS, or the model returned nothing at all). Pick a
+  // fallback that DOESN'T falsely close the intake — instead, nudge
+  // Doug to keep going by asking for whatever's still missing.
   if (!reply.trim()) {
-    reply = "Righto — I've passed that on to Thomas. He'll be in touch shortly to sort you out.";
+    if (missing.length > 0) {
+      const nextField = HUMAN_FIELD_NAMES[missing[0]] ?? missing[0];
+      reply = `Righto — got that. What's your ${nextField}?`;
+    } else {
+      reply = "Righto — Thomas has all your details and he'll be in touch shortly. Cheers!";
+    }
   }
 
   return new Response(
     JSON.stringify({
       reply: reply.trim(),
       capture: newCapture,
-      complete: newCapture.conversation_complete === true,
+      // `complete` is what the widget uses to decide whether to
+      // still accept input. Only claim complete when the app-side
+      // validation agrees.
+      complete: nowReady && newCapture.conversation_complete === true,
     }),
     { status: 200, headers: { ...cors, "Content-Type": "application/json" } },
   );
 }
+
+// Human-friendly labels for the empty-reply fallback so Doug's
+// synthesised nudge sounds natural ("What's your last name?" instead
+// of "What's your last_name?").
+const HUMAN_FIELD_NAMES: Record<string, string> = {
+  first_name:   "first name",
+  last_name:    "last name",
+  email:        "email address",
+  phone:        "phone number",
+  suburb:       "suburb",
+  service_type: "service type — mowing, hedges, tidy-up?",
+  client_type:  "client type — Private, NDIS, Aged Care, or Commercial?",
+  message:      "a quick description of the job",
+};
 
 function jsonError(status: number, message: string, cors: Record<string, string>): Response {
   return new Response(JSON.stringify({ error: message }), {

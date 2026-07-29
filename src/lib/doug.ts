@@ -66,6 +66,10 @@ If all 8 are present, this reply says "brilliant, Thomas will be in touch shortl
 
 Every time the visitor gives you new information, IMMEDIATELY call capture_enquiry with what they just told you. The app merges partial calls — sending one field at a time is fine and encouraged. This way if the conversation drops, the partial data is already saved.
 
+CRITICAL: every response you send must include TEXT for the visitor — even when you're calling capture_enquiry. Never respond with a tool call alone. The visitor cannot see your tool calls; they only see your text. If you call the tool without text, the visitor stares at a blank chat, thinks Doug is broken, and closes the tab. Always: text + (optional) tool call, together.
+
+DO NOT set ready_to_capture = true unless YOU have personally seen a value for EVERY ONE of the 8 required fields in the conversation. The app will REJECT and IGNORE any ready_to_capture=true where a field is still missing — you'll just look silly to the app while the visitor is still waiting for the next question. If you're tempted to set it to "wrap things up quickly" — don't. Ask the next missing question instead.
+
 # Handling short / off-topic / weird replies
 
 If the visitor sends something short, garbled ("and", "?", "ok"), a typo, or something off-topic — DON'T abandon the flow. Gently redirect back to the next missing field. Example: user says "and" — you say "Ha, reckon you got cut off there. What's your suburb, mate?" — then keep going.
@@ -148,6 +152,30 @@ export function mergeCapture(
     (merged as Record<string, unknown>)[k] = v;
   }
   return merged;
+}
+
+// The 8 required fields. Kept as a single source of truth so the
+// system prompt, tool schema, server validation, and admin UI all
+// agree on what "complete" means.
+export const REQUIRED_CAPTURE_FIELDS = [
+  "first_name", "last_name", "email", "phone",
+  "suburb", "service_type", "client_type", "message",
+] as const satisfies ReadonlyArray<keyof CapturedEnquiry>;
+
+// Returns the list of required fields that are still missing from
+// the capture. Empty list = capture is complete.
+export function missingCaptureFields(c: CapturedEnquiry): string[] {
+  const out: string[] = [];
+  for (const f of REQUIRED_CAPTURE_FIELDS) {
+    const v = (c as Record<string, unknown>)[f];
+    if (v === null || v === undefined) { out.push(f); continue; }
+    if (typeof v === "string" && v.trim() === "") { out.push(f); continue; }
+  }
+  return out;
+}
+
+export function isCaptureComplete(c: CapturedEnquiry): boolean {
+  return missingCaptureFields(c).length === 0;
 }
 
 // Format the full transcript as a plain string. Also stored in the
