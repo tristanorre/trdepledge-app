@@ -10,6 +10,7 @@ import CostBreakdown from "@/components/CostBreakdown";
 import JobPhotosSection from "@/components/JobPhotosSection";
 import JobSmsPanel from "@/components/JobSmsPanel";
 import SendToXeroButton from "@/components/SendToXeroButton";
+import { previewLines as xeroPreviewLines } from "@/lib/xero-invoice";
 import ReopenJobButton from "@/components/ReopenJobButton";
 import TimeLogEditor from "@/components/TimeLogEditor";
 import JobQuotePanel from "@/components/JobQuotePanel";
@@ -242,6 +243,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           alreadySent={j.invoice_sent}
           invoiceNumber={j.xero_invoice_id}
           jobCompleted={j.status === "completed"}
+          initialLines={xeroPreviewLines(j, cost)}
         />
       </div>
 

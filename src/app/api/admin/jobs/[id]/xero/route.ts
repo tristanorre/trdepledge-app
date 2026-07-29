@@ -9,16 +9,35 @@ export const runtime = "nodejs";
 
 // POST /api/admin/jobs/[id]/xero  — send the job's invoice to Xero.
 //
+// Optional body:
+//   { line_descriptions?: Array<string | null> }
+//     Positional overrides for the auto-generated invoice line
+//     descriptions. Index N replaces line N's Description; null or
+//     empty string means keep the default. Used by the Send-to-Xero
+//     preview UI where admin retypes descriptions before send.
+//
 // Idempotent-ish: if the job already has a `xero_invoice_id`, returns
 // that immediately and does nothing. Re-sending requires admin to clear
 // the field via the edit form first.
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireApiAdmin();
   if (auth instanceof NextResponse) return auth;
   const { session } = auth;
 
   const supabase = requireSupabase();
   if (supabase instanceof NextResponse) return supabase;
+
+  // Body is optional — POSTing with no body still fires with all
+  // auto-generated descriptions.
+  let descriptionOverrides: Array<string | null> = [];
+  try {
+    const raw = await req.json().catch(() => ({}));
+    if (raw && typeof raw === "object" && Array.isArray((raw as Record<string, unknown>).line_descriptions)) {
+      descriptionOverrides = ((raw as Record<string, unknown>).line_descriptions as unknown[]).map((v) =>
+        typeof v === "string" ? v.slice(0, 500) : null,
+      );
+    }
+  } catch { /* empty body → no overrides, use defaults */ }
 
   // Fetch job + client + materials + rates in parallel.
   const [{ data: job }, { data: matRows }, rates] = await Promise.all([
@@ -68,7 +87,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const cost = calculateCost(j, materials, rates);
 
-  const result = await sendInvoiceForJob(supabase, session.user.id, j, cost);
+  const result = await sendInvoiceForJob(supabase, session.user.id, j, cost, descriptionOverrides);
 
   if (!result.ok) {
     if (result.error === "not_connected") {

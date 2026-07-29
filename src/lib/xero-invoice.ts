@@ -30,6 +30,12 @@ export async function sendInvoiceForJob(
   adminUserId: string,
   job: Job & { client: { id: string; name: string; email: string | null; xero_contact_id: string | null } | null },
   cost: CostBreakdown,
+  // Optional per-line description overrides. Positional — index N in
+  // this array replaces the Description of line N. `null`/undefined
+  // entries fall back to the auto-generated description. Used by the
+  // Send-to-Xero preview UI so Thomas/Brad can retype the wording
+  // before it lands in Xero.
+  descriptionOverrides: Array<string | null | undefined> = [],
 ): Promise<XeroSendResult> {
   const tokens = await getValidTokens(supabase, adminUserId);
   if (!tokens) {
@@ -59,7 +65,7 @@ export async function sendInvoiceForJob(
   // ── 2. Build the line items. Resolve the sales account code from
   // config so admin can change it without redeploying.
   const salesAccountCode = await getXeroSalesAccountCode(supabase);
-  const lineItems = buildLineItems(job, cost, { salesAccountCode });
+  const lineItems = buildLineItems(job, cost, { salesAccountCode, descriptionOverrides });
 
   if (lineItems.length === 0) {
     return { ok: false, error: "nothing_to_invoice" };
@@ -248,12 +254,19 @@ async function findOrCreateContact(
 function buildLineItems(
   job: Job,
   cost: CostBreakdown,
-  opts: { quoteMode?: boolean; salesAccountCode?: string } = {},
+  opts: {
+    quoteMode?: boolean;
+    salesAccountCode?: string;
+    // Positional per-line description overrides — index N replaces
+    // line N's Description. Null/undefined = keep the auto-
+    // generated one. Populated by the Send-to-Xero preview UI where
+    // admin retypes descriptions before send.
+    descriptionOverrides?: Array<string | null | undefined>;
+  } = {},
 ): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [];
   const isNdis: boolean = job.client_type === "NDIS";
   const isAged: boolean = (job.client_type as ClientType) === "Aged Care";
-  const isQuote = opts.quoteMode === true;
   // Fallback for callers that don't pass the code (e.g. previewLines
   // below). The sync path can't await config, so it gets the env-var
   // tier of the fallback chain.
@@ -265,13 +278,20 @@ function buildLineItems(
   // 5-min block rounding (see src/lib/cost.ts). Quantity × UnitAmount
   // equals labour_cents/100 exactly, so the Xero line total agrees
   // with the breakdown shown to Thomas.
+  //
+  // Description is deliberately simple — no billing-mechanism jargon
+  // like "5-min block billing" or "estimated" on the customer-facing
+  // invoice. Worker count stays for context; Thomas/Brad can rewrite
+  // via the Send-to-Xero preview if they want to change the wording.
   if (cost.labour_cents > 0) {
     const rateDollars = cost.rate_cents / 100;
-    const labelSuffix = isQuote ? "estimated" : "5-min block billing";
+    const workerSuffix = cost.workers_billed > 1
+      ? ` (${cost.workers_billed} workers)`
+      : "";
     const labourLine: Record<string, unknown> = {
       Description: isNdis
-        ? `${job.client_type} support — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, ${labelSuffix})`
-        : `Garden / yard work — labour (${cost.workers_billed} worker${cost.workers_billed === 1 ? "" : "s"}, ${labelSuffix})`,
+        ? `${job.client_type} support — labour${workerSuffix}`
+        : `Garden / yard work — labour${workerSuffix}`,
       Quantity: round3(cost.billed_hours),
       UnitAmount: round2(rateDollars),
       AccountCode: accountCode,
@@ -300,6 +320,17 @@ function buildLineItems(
   // For aged-care explicit context, add a line note via Description.
   if (isAged && items.length > 0) {
     (items[0] as Record<string, unknown>).Description += " · Aged Care";
+  }
+
+  // Apply admin-supplied description overrides last — they win over
+  // everything auto-generated including the aged-care suffix.
+  if (opts.descriptionOverrides?.length) {
+    for (let i = 0; i < items.length; i++) {
+      const override = opts.descriptionOverrides[i];
+      if (typeof override === "string" && override.trim() !== "") {
+        (items[i] as Record<string, unknown>).Description = override.trim();
+      }
+    }
   }
 
   return items;

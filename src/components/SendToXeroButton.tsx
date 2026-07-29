@@ -3,31 +3,64 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+// Preview + edit + send flow for the Xero invoice. The parent (job
+// detail page) computes the preview lines via previewLines() and
+// hands them in; admin can retype any Description before hitting
+// Send. Quantity, unit price and totals are read-only — they come
+// from the cost engine and shouldn't be fudged on the way to Xero.
+// If Thomas needs to change quantities he does it via the job's
+// time-log / materials edit, then re-opens the preview.
+
+export type XeroPreviewLine = {
+  description: string;   // auto-generated default
+  qty: string;
+  unit: string;
+  total: string;
+};
+
 type Props = {
   jobId: string;
   alreadySent: boolean;
   invoiceNumber: string | null;
   jobCompleted: boolean;
+  // Populated when the job is completed and there's something to
+  // invoice — one entry per line item Xero will receive. Empty
+  // array = nothing to invoice yet.
+  initialLines: XeroPreviewLine[];
 };
 
-export default function SendToXeroButton({ jobId, alreadySent, invoiceNumber, jobCompleted }: Props) {
+export default function SendToXeroButton({
+  jobId, alreadySent, invoiceNumber, jobCompleted, initialLines,
+}: Props) {
   const router = useRouter();
+  const [descriptions, setDescriptions] = useState<string[]>(
+    initialLines.map((l) => l.description),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Raw Xero response for the "Show technical detail" disclosure so
-  // Thomas can copy/paste it to support if the surfaced message isn't
-  // enough.
   const [detail, setDetail] = useState<unknown>(null);
   const [showDetail, setShowDetail] = useState(false);
 
+  function updateDescription(idx: number, value: string) {
+    setDescriptions((prev) => prev.map((d, i) => (i === idx ? value : d)));
+  }
+
   async function send() {
-    if (!confirm("Send this job's invoice to Xero as a draft? You'll review and approve it inside Xero before it goes to the customer.")) return;
+    if (!confirm(
+      "Send this job's invoice to Xero as a draft?\n\n" +
+      "The descriptions below are what will appear on the customer invoice.\n" +
+      "You'll still review and Approve inside Xero before it goes out.",
+    )) return;
     setBusy(true);
     setError(null);
     setDetail(null);
     setShowDetail(false);
     try {
-      const res = await fetch(`/api/admin/jobs/${jobId}/xero`, { method: "POST" });
+      const res = await fetch(`/api/admin/jobs/${jobId}/xero`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ line_descriptions: descriptions }),
+      });
       const data = await res.json();
       if (!res.ok) {
         if (data?.detail != null) setDetail(data.detail);
@@ -63,11 +96,64 @@ export default function SendToXeroButton({ jobId, alreadySent, invoiceNumber, jo
     );
   }
 
+  if (initialLines.length === 0) {
+    return (
+      <div style={hintStyle}>
+        Nothing to invoice yet — no clocked labour or materials. Add time or
+        materials to the job first, then come back here.
+      </div>
+    );
+  }
+
   return (
     <div>
-      <button type="button" onClick={send} disabled={busy} style={primaryBtn}>
-        {busy ? "Sending…" : "Send to Xero →"}
-      </button>
+      <div style={{ fontSize: 12, color: "var(--gray)", marginBottom: 10, lineHeight: 1.5 }}>
+        Edit any description below before sending. Quantities and prices come from the cost
+        breakdown above — to change those, edit the time log or materials list and reload.
+      </div>
+
+      <div style={tableWrap}>
+        <table style={tableStyle}>
+          <thead>
+            <tr>
+              <th style={{ ...thStyle, textAlign: "left" }}>Description</th>
+              <th style={{ ...thStyle, textAlign: "right", width: 80 }}>Qty</th>
+              <th style={{ ...thStyle, textAlign: "right", width: 90 }}>Unit</th>
+              <th style={{ ...thStyle, textAlign: "right", width: 90 }}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {initialLines.map((line, i) => (
+              <tr key={i}>
+                <td style={tdStyle}>
+                  <input
+                    type="text"
+                    value={descriptions[i] ?? ""}
+                    onChange={(e) => updateDescription(i, e.target.value)}
+                    disabled={busy}
+                    aria-label={`Description for line ${i + 1}`}
+                    style={inputStyle}
+                    maxLength={500}
+                  />
+                </td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{line.qty}</td>
+                <td style={{ ...tdStyle, textAlign: "right" }}>{line.unit}</td>
+                <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{line.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <button type="button" onClick={send} disabled={busy} style={primaryBtn}>
+          {busy ? "Sending…" : "Send to Xero →"}
+        </button>
+        <span style={{ fontSize: 12, color: "var(--gray)" }}>
+          Lands in Xero as <strong>DRAFT</strong> — review + Approve there before it goes to the customer.
+        </span>
+      </div>
+
       {error && (
         <div className="form-error" role="alert" style={errorBoxStyle}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
@@ -90,11 +176,6 @@ export default function SendToXeroButton({ jobId, alreadySent, invoiceNumber, jo
           )}
         </div>
       )}
-      <div style={{ fontSize: 12, color: "var(--gray)", marginTop: 8, lineHeight: 1.5 }}>
-        Builds the invoice from labour + waiting time + materials, upserts the
-        Xero contact, and posts it as a <strong>DRAFT</strong> — review and
-        Approve in Xero before sending to the customer.
-      </div>
     </div>
   );
 }
@@ -112,10 +193,39 @@ const sentBoxStyle: React.CSSProperties = {
 };
 const hintStyle: React.CSSProperties = {
   fontSize: 13, color: "var(--gray)", padding: 12,
-  background: "var(--off)", borderRadius: 10,
+  background: "var(--off)", borderRadius: 10, lineHeight: 1.5,
+};
+const tableWrap: React.CSSProperties = {
+  background: "white", borderRadius: 10,
+  border: "1px solid rgba(0,0,0,0.08)",
+  overflowX: "auto",
+};
+const tableStyle: React.CSSProperties = {
+  width: "100%", borderCollapse: "collapse", minWidth: 500,
+};
+const thStyle: React.CSSProperties = {
+  fontSize: 11, fontWeight: 800, letterSpacing: "0.6px",
+  textTransform: "uppercase", color: "var(--gray)",
+  padding: "10px 10px",
+  borderBottom: "1px solid var(--gray-light)",
+  background: "var(--off)",
+};
+const tdStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  borderBottom: "1px solid var(--gray-light)",
+  fontSize: 13, color: "var(--navy)",
+  verticalAlign: "middle",
+};
+const inputStyle: React.CSSProperties = {
+  width: "100%", padding: "8px 10px",
+  fontSize: 13, fontFamily: "inherit",
+  border: "1.5px solid rgba(0,0,0,0.15)",
+  borderRadius: 8,
+  background: "white", color: "var(--navy)",
+  boxSizing: "border-box",
 };
 const errorBoxStyle: React.CSSProperties = {
-  marginTop: 8,
+  marginTop: 10,
   padding: 10,
   background: "rgba(220,38,38,0.08)",
   border: "1px solid rgba(220,38,38,0.25)",
