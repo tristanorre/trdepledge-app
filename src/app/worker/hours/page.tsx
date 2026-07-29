@@ -3,28 +3,27 @@ import { requireWorker } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 import {
   todayISO, mondayOfWeek, addDaysISO, weekDates,
-  fmtDayShort, fmtWeekRange, dayKeyOf, toISODate,
+  fmtDayShort, fmtWeekRange, toISODate,
 } from "@/lib/dates";
 import { hoursForEntry, sessionsOf } from "@/lib/cost";
 import type { Job } from "@/lib/types";
+import WorkerDailyEntry from "@/components/WorkerDailyEntry";
+import type { DailyTimesheet, EntryType } from "@/lib/timesheets";
 
 export const dynamic = "force-dynamic";
 
-// /worker/hours — per-worker timesheet view.
+// /worker/hours — daily timesheet flow.
 //
-// Workers asked for "total hours per day + pay period total" so they can
-// sanity-check what they've worked before payday and spot clock-out
-// mistakes (forgot to clock out, accidentally still on break, etc).
+// Workers enter their actual worked hours per day (which may differ
+// from clocked-on-job hours — clocked drives invoicing, entered drives
+// payroll). Each day gets Authorise button; once authorised the day
+// is submitted for admin review. Admin approval locks the day.
 //
-// The pay period is Mon → Fri. Weekend work is rare but if it exists it
-// gets its own row beneath the pay-period total, so nothing gets hidden.
-//
-// Hours are computed from `time_log[me]` using the same `hoursForEntry`
-// helper the invoicing path uses, which already subtracts break minutes
-// and counts open shifts up to "now". So the number shown here matches
-// what Thomas would see on the cost breakdown for the same shift.
+// The clocked-hours-from-time_log figure is shown as a reference on
+// each day so workers can sanity-check what they enter against what
+// they clocked. Sessions from multi-session refactor are iterated
+// correctly via sessionsOf().
 
-// Format hours (e.g. 7.25) as "7h 15m".
 function fmtHM(hours: number): string {
   if (!Number.isFinite(hours) || hours <= 0) return "—";
   const totalMin = Math.round(hours * 60);
@@ -35,108 +34,115 @@ function fmtHM(hours: number): string {
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
-type DayBucket = {
-  iso: string;
-  hours: number;
-  hasOpenShift: boolean; // worker still clocked in on this day
-  // Keyed by jobId so two sessions on the SAME job on the SAME day
-  // aggregate into one entry (jobCount doesn't inflate). Rendered as
-  // an ordered list by insertion order.
-  jobsByJobId: Map<string, { jobId: string; clientName: string; hours: number; open: boolean; sessionCount: number }>;
-};
-
 export default async function WorkerHoursPage({
   searchParams,
 }: { searchParams: { week?: string } }) {
   const session = await requireWorker();
   const supabase = getServiceClient();
 
-  // Resolve which week we're viewing. Default to the Monday of "today".
   const today = todayISO();
   const seed = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.week ?? "")
     ? searchParams.week!
     : today;
   const weekStart = mondayOfWeek(seed);
-  const weekEnd   = addDaysISO(weekStart, 6); // Sunday
+  const weekEnd = addDaysISO(weekStart, 6);
+  const allWeekDates = weekDates(weekStart);
+  const weekdays = allWeekDates.slice(0, 5);
+  const weekend = allWeekDates.slice(5);
 
-  // Bracket the SQL filter loose to catch jobs whose scheduled date
-  // sits on the edge of the week but whose actual clock-in spilt into
-  // an adjacent day. We re-bucket in JS by clock-in date below.
+  // Widen the jobs query bracket by one day to catch a boundary
+  // shift into an adjacent scheduled date. Re-bucketed by clock-in
+  // date in JS below.
   const queryFrom = addDaysISO(weekStart, -1);
-  const queryTo   = addDaysISO(weekEnd, 1);
+  const queryTo = addDaysISO(weekEnd, 1);
 
   let jobs: Job[] = [];
+  let timesheets: DailyTimesheet[] = [];
+  let approvedLeaveByDate = new Map<string, EntryType>();
   let dbConfigured = !!supabase;
+
   if (supabase) {
-    const { data, error } = await supabase
-      .from("jobs")
-      .select("id, client_name, date, time_log, assigned_worker_ids, status")
-      .contains("assigned_worker_ids", [session.user.id])
-      .gte("date", queryFrom)
-      .lte("date", queryTo);
-    if (error) {
-      console.error("[worker/hours]", error);
+    const [{ data: jobsData, error: jobsErr }, { data: tsData }, { data: leaveData }] = await Promise.all([
+      supabase
+        .from("jobs")
+        .select("id, client_name, date, time_log, assigned_worker_ids, status")
+        .contains("assigned_worker_ids", [session.user.id])
+        .gte("date", queryFrom)
+        .lte("date", queryTo),
+      supabase
+        .from("daily_timesheets")
+        .select("*")
+        .eq("worker_id", session.user.id)
+        .gte("work_date", weekStart)
+        .lte("work_date", weekEnd),
+      supabase
+        .from("leave_requests")
+        .select("type, from_date, to_date")
+        .eq("worker_id", session.user.id)
+        .eq("status", "approved")
+        .lte("from_date", weekEnd)
+        .gte("to_date", weekStart),
+    ]);
+    if (jobsErr) {
+      console.error("[worker/hours jobs]", jobsErr);
       dbConfigured = false;
     }
-    jobs = (data ?? []) as Job[];
-  }
+    jobs = (jobsData ?? []) as Job[];
+    timesheets = (tsData ?? []) as DailyTimesheet[];
 
-  // Build day buckets keyed by ISO date.
-  const buckets = new Map<string, DayBucket>();
-  function bucketFor(iso: string): DayBucket {
-    const existing = buckets.get(iso);
-    if (existing) return existing;
-    const next: DayBucket = { iso, hours: 0, hasOpenShift: false, jobsByJobId: new Map() };
-    buckets.set(iso, next);
-    return next;
-  }
-
-  // Workers can have MULTIPLE sessions per job now (leave to attend
-  // another job, come back later). Iterate every session per worker
-  // per job and bucket each one by its own start-date. Sessions on
-  // the same job the same day roll up into a single job line.
-  for (const j of jobs) {
-    const sessions = sessionsOf(j.time_log?.[session.user.id]);
-    for (const entry of sessions) {
-      if (!entry?.start) continue;
-      const startISO = toISODate(new Date(entry.start));
-      const hours = hoursForEntry(entry);
-      if (hours <= 0) continue;
-      const isOpen = !entry.end;
-      const b = bucketFor(startISO);
-      b.hours += hours;
-      b.hasOpenShift = b.hasOpenShift || isOpen;
-      const jobRow = b.jobsByJobId.get(j.id);
-      if (jobRow) {
-        jobRow.hours += hours;
-        jobRow.open = jobRow.open || isOpen;
-        jobRow.sessionCount += 1;
-      } else {
-        b.jobsByJobId.set(j.id, {
-          jobId: j.id,
-          clientName: j.client_name,
-          hours,
-          open: isOpen,
-          sessionCount: 1,
-        });
+    // Map approved leave requests to per-day entry_type hints. The
+    // leave_requests.type is human-readable ("Annual Leave"); map to
+    // our enum.
+    const typeMap: Record<string, EntryType> = {
+      "Annual Leave":   "annual_leave",
+      "Sick Leave":     "sick_leave",
+      "Personal Leave": "personal_leave",
+      "Unpaid":         "unpaid_leave",
+    };
+    for (const req of (leaveData ?? []) as Array<{ type: string; from_date: string; to_date: string }>) {
+      const mapped = typeMap[req.type];
+      if (!mapped) continue;
+      // Walk each date in the range that falls within our week.
+      let d = req.from_date > weekStart ? req.from_date : weekStart;
+      const stop = req.to_date < weekEnd ? req.to_date : weekEnd;
+      while (d <= stop) {
+        approvedLeaveByDate.set(d, mapped);
+        d = addDaysISO(d, 1);
       }
     }
   }
 
-  const allWeekDates = weekDates(weekStart);
-  const weekdays = allWeekDates.slice(0, 5);     // Mon–Fri
-  const weekend  = allWeekDates.slice(5);        // Sat–Sun
+  // Compute clocked hours per date from jobs.time_log.
+  const clockedByDate = new Map<string, number>();
+  for (const j of jobs) {
+    const sessions = sessionsOf(j.time_log?.[session.user.id]);
+    for (const s of sessions) {
+      if (!s?.start) continue;
+      const iso = toISODate(new Date(s.start));
+      if (iso < weekStart || iso > weekEnd) continue;
+      const hrs = hoursForEntry(s);
+      if (hrs <= 0) continue;
+      clockedByDate.set(iso, (clockedByDate.get(iso) ?? 0) + hrs);
+    }
+  }
 
-  // Pay-period total = Mon–Fri only.
+  // Timesheet lookup by date.
+  const tsByDate = new Map<string, DailyTimesheet>();
+  for (const t of timesheets) tsByDate.set(t.work_date, t);
+
+  // Pay-period authorised total (Mon–Fri).
+  // Uses approved_hours if approved, else hours if authorised, else 0.
+  function effective(t: DailyTimesheet | undefined): number {
+    if (!t) return 0;
+    if (t.approved_at) return Number(t.approved_hours ?? t.hours ?? 0);
+    if (t.submitted_at) return Number(t.hours ?? 0);
+    return 0;
+  }
   const payPeriodHours = weekdays.reduce(
-    (sum, iso) => sum + (buckets.get(iso)?.hours ?? 0),
+    (sum, iso) => sum + effective(tsByDate.get(iso)),
     0,
   );
-  const weekendHours = weekend.reduce(
-    (sum, iso) => sum + (buckets.get(iso)?.hours ?? 0),
-    0,
-  );
-  const anyWeekendWork = weekendHours > 0;
+  const anyWeekendWork = weekend.some((iso) => effective(tsByDate.get(iso)) > 0);
 
   const prevWeek = addDaysISO(weekStart, -7);
   const nextWeek = addDaysISO(weekStart, 7);
@@ -144,20 +150,38 @@ export default async function WorkerHoursPage({
   const isCurrentWeek = weekStart === thisWeekStart;
   const isFutureWeek = weekStart > thisWeekStart;
 
+  function renderDay(iso: string) {
+    const t = tsByDate.get(iso);
+    return (
+      <WorkerDailyEntry
+        key={iso}
+        workDate={iso}
+        dayLabel={fmtDayShort(iso)}
+        isToday={iso === today}
+        clockedHours={clockedByDate.get(iso) ?? 0}
+        entryType={(t?.entry_type ?? approvedLeaveByDate.get(iso) ?? "worked") as EntryType}
+        hours={Number(t?.hours ?? 0)}
+        workerNote={t?.worker_note ?? null}
+        submittedAt={t?.submitted_at ?? null}
+        approvedAt={t?.approved_at ?? null}
+        approvedEntryType={(t?.approved_entry_type ?? null) as EntryType | null}
+        approvedHours={t?.approved_hours == null ? null : Number(t.approved_hours)}
+        approvedLeaveType={approvedLeaveByDate.get(iso) ?? null}
+      />
+    );
+  }
+
   return (
     <div>
       <h1 style={titleStyle}>My hours</h1>
       <p style={subtitleStyle}>
-        Hours you&apos;ve worked this pay period (Mon–Fri). Break time is
-        already deducted. Still clocked in? That day&apos;s total keeps
-        ticking up live.
+        Enter your actual worked hours per day and <strong>Authorise</strong> at the end of each day.
+        Thomas or Brad will approve the week before it goes to payroll. Clocked-on-job hours
+        (shown as reference) drive client invoicing, not your pay.
       </p>
 
-      {/* Week navigation */}
       <div style={navRowStyle}>
-        <Link href={`/worker/hours?week=${prevWeek}`} style={navBtnStyle} aria-label="Previous week">
-          ‹ Prev
-        </Link>
+        <Link href={`/worker/hours?week=${prevWeek}`} style={navBtnStyle} aria-label="Previous week">‹ Prev</Link>
         <div style={weekLabelStyle}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "1.5px", color: "var(--gray)", textTransform: "uppercase" }}>
             {isCurrentWeek ? "This week" : isFutureWeek ? "Upcoming" : "Past week"}
@@ -166,9 +190,7 @@ export default async function WorkerHoursPage({
             {fmtWeekRange(weekStart)}
           </div>
         </div>
-        <Link href={`/worker/hours?week=${nextWeek}`} style={navBtnStyle} aria-label="Next week">
-          Next ›
-        </Link>
+        <Link href={`/worker/hours?week=${nextWeek}`} style={navBtnStyle} aria-label="Next week">Next ›</Link>
       </div>
 
       {!isCurrentWeek && (
@@ -180,29 +202,22 @@ export default async function WorkerHoursPage({
       )}
 
       {!dbConfigured && (
-        <div style={emptyStyle}>
-          Database not configured.
-        </div>
+        <div style={emptyStyle}>Database not configured.</div>
       )}
 
-      {/* Pay-period summary card — the headline number workers came here for. */}
       <div style={summaryCardStyle}>
         <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "1.5px", color: "rgba(255,255,255,0.7)", textTransform: "uppercase", marginBottom: 4 }}>
-          Pay-period total (Mon–Fri)
+          Pay-period total (Mon–Fri) — authorised or approved
         </div>
         <div style={{ fontFamily: "var(--font-display)", fontSize: 40, lineHeight: 1.1 }}>
           {fmtHM(payPeriodHours)}
         </div>
       </div>
 
-      {/* Weekday rows */}
       <div style={listStyle}>
-        {weekdays.map((iso) => (
-          <DayRow key={iso} iso={iso} bucket={buckets.get(iso)} isToday={iso === today} />
-        ))}
+        {weekdays.map(renderDay)}
       </div>
 
-      {/* Weekend rows shown only if there's data (rare). */}
       {anyWeekendWork && (
         <>
           <div style={{
@@ -213,81 +228,10 @@ export default async function WorkerHoursPage({
             Weekend
           </div>
           <div style={listStyle}>
-            {weekend.map((iso) => (
-              <DayRow key={iso} iso={iso} bucket={buckets.get(iso)} isToday={iso === today} />
-            ))}
-          </div>
-          <div style={{ marginTop: 8, fontSize: 12, color: "var(--gray)", textAlign: "right" }}>
-            Weekend total: <strong style={{ color: "var(--navy)" }}>{fmtHM(weekendHours)}</strong>
-            {" "}— not included in the pay-period total above.
+            {weekend.map(renderDay)}
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function DayRow({ iso, bucket, isToday }: { iso: string; bucket: DayBucket | undefined; isToday: boolean }) {
-  const dayKey = dayKeyOf(iso);
-  const isWeekend = dayKey === "sat" || dayKey === "sun";
-  const hours = bucket?.hours ?? 0;
-  const jobs = bucket ? Array.from(bucket.jobsByJobId.values()) : [];
-  const jobCount = jobs.length;
-  const empty = hours <= 0;
-
-  return (
-    <div style={{
-      ...dayRowStyle,
-      background: isToday ? "rgba(208,255,89,0.18)" : "white",
-      borderColor: isToday ? "rgba(208,255,89,0.6)" : "rgba(0,0,0,0.06)",
-    }}>
-      <div style={{ display: "flex", flexDirection: "column", minWidth: 90 }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.8px", color: "var(--gray)", textTransform: "uppercase" }}>
-          {fmtDayShort(iso)}{isWeekend && " ·"}
-        </div>
-        {isToday && (
-          <div style={{ fontSize: 10, fontWeight: 800, color: "#15803D", letterSpacing: "0.8px", textTransform: "uppercase" }}>
-            Today
-          </div>
-        )}
-      </div>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {empty ? (
-          <div style={{ fontSize: 13, color: "var(--gray)", fontStyle: "italic" }}>No hours logged</div>
-        ) : (
-          <>
-            {jobs.map((j) => (
-              <div key={j.jobId} style={{
-                display: "flex", justifyContent: "space-between", gap: 8,
-                fontSize: 13, color: "var(--navy)", padding: "2px 0",
-              }}>
-                <Link href={`/worker/jobs/${j.jobId}`} style={{
-                  color: "var(--navy)", textDecoration: "none",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  flex: 1, minWidth: 0,
-                }}>
-                  {j.clientName}
-                  {j.sessionCount > 1 && (
-                    <span style={sessionTagStyle}>×{j.sessionCount}</span>
-                  )}
-                  {j.open && <span style={openTagStyle}>live</span>}
-                </Link>
-                <span style={{ color: "var(--gray)", flex: "0 0 auto" }}>{fmtHM(j.hours)}</span>
-              </div>
-            ))}
-            <div style={{
-              marginTop: 6, paddingTop: 6,
-              borderTop: "1px solid rgba(0,0,0,0.06)",
-              display: "flex", justifyContent: "space-between",
-              fontSize: 14, fontWeight: 800, color: "var(--navy)",
-            }}>
-              <span>{jobCount} job{jobCount === 1 ? "" : "s"}</span>
-              <span>{fmtHM(hours)}{bucket!.hasOpenShift && " (live)"}</span>
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -322,31 +266,9 @@ const summaryCardStyle: React.CSSProperties = {
   borderRadius: 14, padding: "18px 20px", marginBottom: 16,
 };
 const listStyle: React.CSSProperties = {
-  display: "flex", flexDirection: "column", gap: 8,
-};
-const dayRowStyle: React.CSSProperties = {
-  display: "flex", gap: 12,
-  padding: "12px 14px", borderRadius: 12,
-  border: "1px solid",
+  display: "flex", flexDirection: "column", gap: 10,
 };
 const emptyStyle: React.CSSProperties = {
   background: "white", borderRadius: 12, padding: 16,
   fontSize: 13, color: "var(--gray)", marginBottom: 16,
-};
-const openTagStyle: React.CSSProperties = {
-  display: "inline-block", marginLeft: 6,
-  background: "rgba(255,229,0,0.18)", color: "#857200",
-  fontSize: 10, fontWeight: 800, letterSpacing: "0.5px",
-  textTransform: "uppercase",
-  padding: "1px 6px", borderRadius: 999,
-  verticalAlign: "middle",
-};
-// Small "×N" tag when a worker has multiple sessions on the same
-// job the same day (left → came back later).
-const sessionTagStyle: React.CSSProperties = {
-  display: "inline-block", marginLeft: 6,
-  background: "rgba(26,79,181,0.10)", color: "#1A4FB5",
-  fontSize: 10, fontWeight: 800,
-  padding: "1px 6px", borderRadius: 999,
-  verticalAlign: "middle",
 };

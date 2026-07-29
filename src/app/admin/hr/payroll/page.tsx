@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
-import { mondayOfWeek, addDaysISO, todayISO, fmtWeekRange, weekDates } from "@/lib/dates";
+import { mondayOfWeek, addDaysISO, todayISO, fmtWeekRange, weekDates, fmtDayShort } from "@/lib/dates";
 import PayrollHoursEditor from "@/components/PayrollHoursEditor";
+import AwaitingTimesheetApprovals, { type PendingRow } from "@/components/AwaitingTimesheetApprovals";
 import { computeClockedHoursForWeek } from "@/lib/payroll-hours";
+import type { EntryType } from "@/lib/timesheets";
 
 export const dynamic = "force-dynamic";
 
@@ -30,9 +32,10 @@ export default async function PayrollPage({
   let workers: Worker[] = [];
   const hoursLookup: Record<string, string> = {};
   let clockedLookup: Record<string, string> = {};
+  let pendingRows: PendingRow[] = [];
 
   if (supabase) {
-    const [{ data: ws }, { data: hs }] = await Promise.all([
+    const [{ data: ws }, { data: hs }, { data: pending }] = await Promise.all([
       supabase.from("users")
         .select("id, name")
         .or("role.eq.worker,field_worker.eq.true")
@@ -42,12 +45,38 @@ export default async function PayrollPage({
         .select("worker_id, work_date, hours")
         .gte("work_date", dates[0])
         .lte("work_date", weekEndISO),
+      // Awaiting-approval rows: worker has authorised (submitted_at set)
+      // and admin hasn't stamped approval yet.
+      supabase.from("daily_timesheets")
+        .select("id, worker_id, work_date, entry_type, hours, worker_note, submitted_at")
+        .gte("work_date", dates[0])
+        .lte("work_date", weekEndISO)
+        .not("submitted_at", "is", null)
+        .is("approved_at", null)
+        .order("work_date", { ascending: true }),
     ]);
     workers = (ws ?? []) as Worker[];
     const rawHours = (hs ?? []) as Array<{ worker_id: string; work_date: string; hours: number }>;
     for (const r of rawHours) {
       hoursLookup[`${r.worker_id}|${r.work_date}`] = String(r.hours);
     }
+
+    // Map worker_id → name for the pending rows.
+    const workerNameById = new Map(workers.map((w) => [w.id, w.name]));
+    pendingRows = ((pending ?? []) as Array<{
+      id: string; worker_id: string; work_date: string;
+      entry_type: string; hours: number; worker_note: string | null; submitted_at: string;
+    }>).map((r) => ({
+      id: r.id,
+      worker_id: r.worker_id,
+      worker_name: workerNameById.get(r.worker_id) ?? "(unknown worker)",
+      work_date: r.work_date,
+      day_label: fmtDayShort(r.work_date),
+      entry_type: r.entry_type as EntryType,
+      hours: Number(r.hours),
+      worker_note: r.worker_note,
+      submitted_at: r.submitted_at,
+    }));
 
     // Pull actual clocked hours (from every worker's jobs.time_log)
     // so the payroll grid can pre-fill empty cells with what the crew
@@ -83,6 +112,17 @@ export default async function PayrollPage({
           <Link href={`/admin/hr/payroll?week_start=${addDaysISO(weekStart,  7)}`} style={navBtn}>Week ›</Link>
         </div>
       </div>
+
+      {/* Awaiting approval — worker-authorised daily timesheets waiting
+          on Thomas / Bradley. Approving here writes into worker_paid_hours
+          (below) and decrements leave balances for leave-type entries. */}
+      <div style={{ marginBottom: 24 }}>
+        <AwaitingTimesheetApprovals weekStart={weekStart} rows={pendingRows} />
+      </div>
+
+      <h3 style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--navy)", marginBottom: 8 }}>
+        Paid hours grid (feeds the CSV export)
+      </h3>
 
       <PayrollHoursEditor
         workers={workers}
