@@ -110,8 +110,8 @@ export default function ContactForm({ initialService = "" }: Props) {
       </div>
 
       <div className="form-group">
-        <label className="form-label" htmlFor="phone">Phone Number</label>
-        <input id="phone" name="phone" className="form-input" type="tel" placeholder="04XX XXX XXX" autoComplete="tel" inputMode="tel" />
+        <label className="form-label" htmlFor="phone">Phone Number *</label>
+        <input id="phone" name="phone" className="form-input" type="tel" placeholder="04XX XXX XXX" required autoComplete="tel" inputMode="tel" />
       </div>
 
       <div className="form-group">
@@ -128,15 +128,15 @@ export default function ContactForm({ initialService = "" }: Props) {
       </div>
 
       <div className="form-group">
-        <label className="form-label" htmlFor="client_type">Client Type</label>
-        <select id="client_type" name="client_type" className="form-select" defaultValue={CLIENT_TYPES[0]}>
+        <label className="form-label" htmlFor="client_type">Client Type *</label>
+        <select id="client_type" name="client_type" className="form-select" required defaultValue={CLIENT_TYPES[0]}>
           {CLIENT_TYPES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
 
       <div className="form-group">
-        <label className="form-label" htmlFor="message">Tell Us About Your Job</label>
-        <textarea id="message" name="message" className="form-textarea" placeholder="Describe what you need done, the size of your property, and any other relevant details…" />
+        <label className="form-label" htmlFor="message">Tell Us About Your Job *</label>
+        <textarea id="message" name="message" className="form-textarea" placeholder="Describe what you need done, the size of your property, and any other relevant details…" required />
       </div>
 
       <button type="submit" className="form-submit" disabled={status === "submitting"}>

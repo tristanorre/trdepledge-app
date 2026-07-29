@@ -23,33 +23,60 @@ export const RATE_LIMIT_PER_MINUTE = 30;
 // the same admin queue with the same shape.
 export const DOUG_SYSTEM_PROMPT = `You are Doug, the cheeky galah mascot who "supervises" Thomas Depledge at T.R. Depledge Gardening & Maintenance (based in Wallaroo, SA — serving the entire Yorke Peninsula, including Kadina and Moonta). You're warm, funny, broad-Aussie, and genuinely useful. Locals-friendly, not corporate.
 
-Your job on the website:
-- Greet warmly and ask what the visitor needs help with.
-- Get curious about the JOB and steer the conversation to collect the same details our contact form asks for:
-    * First name AND last name
-    * Email address
-    * Phone number
-    * Suburb / area the job is at (e.g. Wallaroo, Kadina, Moonta, Port Hughes)
-    * Service type — what work they need (mowing, hedge trim, tidy-up, ongoing maintenance, etc.)
-    * Client type — Private, NDIS, Aged Care, or Commercial (default Private if a regular homeowner)
-    * A short description of the job (property size, condition, anything Thomas needs to know)
-- Once you've got name + email + phone + suburb + service_type + a rough job description, set ready_to_capture = true.
+# What you're doing here
 
-Hard rules:
-- NEVER quote prices, promise dates, or invent details. You qualify and route — Thomas does the quoting.
-- NEVER turn business away or pre-judge a job as too small/big or "not your area." Capture it and let Thomas decide fit.
+Every conversation has ONE job: capture a complete enquiry so Thomas can quote and follow up. You are NOT a general-purpose chatbot. You are a lead-capture front door for a small business.
+
+# The 8 fields you MUST collect before finishing
+
+You must collect ALL EIGHT of these before setting ready_to_capture = true. There are NO exceptions — every field is required. This matches the website's contact form, which enforces the same requirements:
+
+  1. **first_name**    — Their first name.
+  2. **last_name**     — Their last name / surname.
+  3. **email**         — Their email address.
+  4. **phone**         — An Australian phone number (mobile or landline).
+  5. **suburb**        — Town or suburb the job is at (e.g. Wallaroo, Kadina, Moonta, Port Hughes).
+  6. **service_type**  — What work they need (mowing, hedge trim, tidy-up, ongoing maintenance, etc.).
+  7. **client_type**   — Private, NDIS, Aged Care, or Commercial. If you don't know for sure, ASK ("Are you a private client, an NDIS participant, on an aged-care package, or a business?").
+  8. **message**       — A rough description of the job (property size, condition, timeframe).
+
+# The collection sequence
+
+Follow this loop until every required field is captured:
+  a. Greet + learn about the job (what and where).
+  b. When you've learned something concrete, call capture_enquiry with what you know.
+  c. Look at what's still MISSING from the 8 required fields.
+  d. Ask for the next missing field in a natural way, ONE question at a time.
+  e. Loop.
+
+# You cannot finish without all 8 fields
+
+Do NOT set ready_to_capture = true with ANY missing field. The visitor cannot submit an incomplete enquiry — the website's own form blocks incomplete submissions, and Doug enforces the same rule. If they say "that's it" but you're still missing a field, don't just accept it — say something warm like "One last thing — [missing field]?".
+
+If they truly refuse to give a required field (they push back after you've asked twice), be honest: "No worries, but Thomas needs [that field] to be able to help you. Happy to keep going once you can share it — or feel free to give him a bell direct on 0474 844 204." Do NOT set ready_to_capture = true; leave the conversation there.
+
+# Hard rules
+
+- NEVER quote prices, promise dates, or invent details. Thomas does the quoting.
+- NEVER turn business away or pre-judge a job as too small/big or "not your area." Capture it and let Thomas decide.
 - Keep replies SHORT and human (2–4 sentences), one question at a time.
-- Don't spam callouts to call Thomas directly — you're the front door; capture the enquiry.
-- If the visitor gives one name (just "John"), politely ask for their last name too — the admin CRM needs both.
-- If they don't have an email, still push for the phone number as the primary contact.
+- Don't tell people to just call Thomas directly — you're the intake process; capture the enquiry.
+- If they give a single name ("John"), ask for their last name in the next reply.
+- Never assume the enquiry is complete just because they said "yeah that's it." Check the 7 fields against what you've captured — if any are missing, ask for them.
 
-Trust cues you can weave in when it fits: Local & Reliable, Police Checked, Fully Insured, NDIS Approved, and a team that actually turns up.
+# Trust cues (weave in when it fits)
 
-Services T.R. Depledge does: lawn mowing, hedge & shrub trimming, pruning & tidy-ups, planting & garden beds, green-waste clearance, ongoing scheduled maintenance, and NDIS / aged-care garden care.
+Local & Reliable, Police Checked, Fully Insured, NDIS Approved, a team that actually turns up.
 
-Call the capture_enquiry tool as soon as you've learned something concrete (a name, an email, a suburb) and again as more details come out. Only include fields you're confident of; leave the rest blank. Each call updates the same record — the "not overwriting with blanks" rule is enforced by the app.
+# Services T.R. Depledge does
 
-When the visitor has been handed off ("Thomas will call you back"), set conversation_complete = true on the final tool call.`;
+Lawn mowing, hedge & shrub trimming, pruning & tidy-ups, planting & garden beds, green-waste clearance, ongoing scheduled maintenance, and NDIS / aged-care garden care.
+
+# Tool call rhythm
+
+Call capture_enquiry EARLY and OFTEN — every time you learn a new field, call it with just the new field. The app merges each call into a single record and skips blanks, so partial calls are safe. When you finally have all 7 fields, call one last time with ready_to_capture = true.
+
+When the visitor's been handed off ("Thomas will be in touch"), set conversation_complete = true on the final tool call.`;
 
 // Tool schema — capture_enquiry. Mirrors the enquiries-table columns
 // used by the /contact form so Doug leads land in the same admin
@@ -128,14 +155,13 @@ function fullName(c: CapturedEnquiry): string {
   return both || "(no name yet)";
 }
 
-// Human-readable subject + body for the notification email. Body is
-// plain-text so it renders anywhere; the field block goes first (what
-// Thomas actually needs), transcript underneath as a scrollable
-// reference. If `enquiryId` is passed, the email includes a
-// deep-link to /admin/enquiries/<id> for one-click review.
+// Human-readable subject + body for the notification email.
+// Prefers linking to the JOB row (Thomas's review destination); falls
+// back to the enquiry if the job insert failed.
 export function formatEnquiryEmail(args: {
   capture: CapturedEnquiry;
   transcript: Array<{ role: "user" | "assistant"; text: string }>;
+  jobId?: string;
   enquiryId?: string;
   appBaseUrl?: string;
 }): { subject: string; text: string; html: string } {
@@ -155,13 +181,16 @@ export function formatEnquiryEmail(args: {
   ];
 
   const transcriptText = formatTranscript(args.transcript);
-  const reviewUrl = args.enquiryId && args.appBaseUrl
-    ? `${args.appBaseUrl.replace(/\/$/, "")}/admin/enquiries/${args.enquiryId}`
-    : null;
+  const base = args.appBaseUrl?.replace(/\/$/, "") ?? "";
+  const jobUrl     = args.jobId     && base ? `${base}/admin/jobs/${args.jobId}` : null;
+  const enquiryUrl = args.enquiryId && base ? `${base}/admin/enquiries/${args.enquiryId}` : null;
+  const primaryUrl = jobUrl ?? enquiryUrl;
+  const primaryLabel = jobUrl ? "Review job →" : "Review enquiry →";
 
   const text = [
-    "Doug just captured a new enquiry from the website.",
-    ...(reviewUrl ? ["", `Review + convert to job: ${reviewUrl}`] : []),
+    "Doug just captured a new enquiry from the website. It's already been created as a pending-review job.",
+    ...(primaryUrl ? ["", `${primaryLabel.replace(/\s*→$/, "")}: ${primaryUrl}`] : []),
+    ...(enquiryUrl && jobUrl ? [`Enquiry source: ${enquiryUrl}`] : []),
     "",
     ...fieldLines,
     "",
@@ -170,12 +199,13 @@ export function formatEnquiryEmail(args: {
   ].join("\n");
 
   const html = `
-    <p><strong>Doug just captured a new enquiry from the website.</strong></p>
-    ${reviewUrl ? `<p style="margin:12px 0">
-      <a href="${reviewUrl}" style="background:#0F1B2D;color:#D0FF59;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:800;font-family:Arial,sans-serif;display:inline-block">
-        Review + convert to job →
+    <p><strong>Doug just captured a new enquiry from the website.</strong>${jobUrl ? " It's already been created as a pending-review job." : ""}</p>
+    ${primaryUrl ? `<p style="margin:12px 0">
+      <a href="${primaryUrl}" style="background:#0F1B2D;color:#D0FF59;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:800;font-family:Arial,sans-serif;display:inline-block">
+        ${primaryLabel}
       </a>
     </p>` : ""}
+    ${enquiryUrl && jobUrl ? `<p style="font-size:12px;color:#666"><a href="${enquiryUrl}" style="color:#0F1B2D">Enquiry source</a> · original transcript</p>` : ""}
     <table style="font-family:Arial,sans-serif;font-size:14px;border-collapse:collapse">
       ${fieldLines.map((line) => {
         const [label, ...rest] = line.split(":");
@@ -194,12 +224,14 @@ export function formatEnquiryEmail(args: {
 }
 
 // Build the row we insert into `enquiries` when Doug flips
-// ready_to_capture. Fields with `NOT NULL` on the table get sensible
-// fallbacks — Thomas will spot them at a glance (e.g. `last_name:
-// "(from Doug)"`).
+// ready_to_capture. Doug's system prompt enforces that every field is
+// present before ready_to_capture is set, so we trust the values as
+// non-empty; the trimmed?? fallbacks are defence-in-depth in case
+// the model slips.
 export function buildEnquiryRow(
   c: CapturedEnquiry,
   transcript: Array<{ role: "user" | "assistant"; text: string }>,
+  extraStatus: "new" | "converted" = "new",
 ): {
   first_name: string;
   last_name: string;
@@ -209,23 +241,80 @@ export function buildEnquiryRow(
   service_type: string;
   client_type: string | null;
   message: string | null;
-  status: "new";
+  status: "new" | "converted";
   notes: string;
 } {
   return {
     first_name:   c.first_name?.trim() || "(via Doug)",
     last_name:    c.last_name?.trim()  || "(via Doug)",
-    // enquiries.email is NOT NULL but Doug may not always get one.
-    // Fall back to a placeholder so the insert succeeds; Thomas can
-    // spot the placeholder immediately and knows to reach out by phone.
     email:        c.email?.trim() || "no-email@doug-enquiry.local",
     phone:        c.phone?.trim() || null,
     suburb:       c.suburb?.trim() || "(unknown)",
     service_type: c.service_type?.trim() || "(unspecified)",
     client_type:  c.client_type ?? "Private",
     message:      c.message?.trim() || null,
-    status:       "new",
+    status:       extraStatus,
     notes: `Captured via Doug chatbot.\n\n--- Transcript ---\n${formatTranscript(transcript)}`,
+  };
+}
+
+// jobs.client_type is CHECK-constrained to Private / NDIS / Aged Care
+// — no Commercial. Follow the same convention as ensureRecurringJobForClient:
+// fall Commercial back to Private so the DB write succeeds. Thomas
+// can retype it in the edit form if needed.
+function jobClientType(dougType?: string): "Private" | "NDIS" | "Aged Care" {
+  switch (dougType) {
+    case "NDIS":      return "NDIS";
+    case "Aged Care": return "Aged Care";
+    default:          return "Private";
+  }
+}
+
+// The system JobNote author for records Doug (not a human) creates.
+// The Notes UI only uses author_name for display; author_id is
+// stored for auditing purposes.
+const DOUG_SYSTEM_NOTE_AUTHOR = {
+  author_id:   "00000000-0000-0000-0000-000000000000",
+  author_name: "Doug (chatbot)",
+};
+
+// Build the jobs row Doug inserts alongside the enquiries row. Status
+// is 'pending_review' so it lands in the admin "For review" tab where
+// Thomas can quote / schedule / cancel from.
+export function buildJobRow(c: CapturedEnquiry): {
+  client_name: string;
+  client_type: "Private" | "NDIS" | "Aged Care";
+  suburb: string | null;
+  description: string;
+  status: "pending_review";
+  notes: Array<{ author_id: string; author_name: string; text: string; timestamp: string }>;
+} {
+  const first = c.first_name?.trim() || "";
+  const last  = c.last_name?.trim()  || "";
+  const name  = `${first} ${last}`.trim() || "(via Doug)";
+  const service = c.service_type?.trim() || "General enquiry";
+  const message = c.message?.trim() || "(no description provided)";
+
+  // Contact + Doug marker as the first note so Thomas has phone/
+  // email at hand without opening the enquiry cross-reference.
+  const contactNote =
+    `Captured via Doug (website chatbot).\n\n` +
+    `Contact: ${name}\n` +
+    `Phone: ${c.phone?.trim() || "—"}\n` +
+    `Email: ${c.email?.trim() || "—"}\n` +
+    `Client type (as told): ${c.client_type ?? "Private"}`;
+
+  return {
+    client_name:  name,
+    client_type:  jobClientType(c.client_type),
+    suburb:       c.suburb?.trim() || null,
+    description:  `${service} — ${message}`,
+    status:       "pending_review",
+    notes: [{
+      ...DOUG_SYSTEM_NOTE_AUTHOR,
+      text: contactNote,
+      timestamp: new Date().toISOString(),
+    }],
   };
 }
 

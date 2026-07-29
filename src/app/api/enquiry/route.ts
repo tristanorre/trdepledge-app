@@ -3,7 +3,8 @@ import { sendEmail } from "@/lib/email";
 import { getServiceClient } from "@/lib/supabase";
 import {
   DOUG_MODEL, DOUG_MAX_TOKENS, DOUG_SYSTEM_PROMPT,
-  CAPTURE_ENQUIRY_TOOL, mergeCapture, formatEnquiryEmail, buildEnquiryRow,
+  CAPTURE_ENQUIRY_TOOL, mergeCapture, formatEnquiryEmail,
+  buildEnquiryRow, buildJobRow,
   MAX_MESSAGES, MAX_MESSAGE_CHARS, MAX_BODY_BYTES, RATE_LIMIT_PER_MINUTE,
   type CapturedEnquiry,
 } from "@/lib/doug";
@@ -201,36 +202,68 @@ export async function POST(req: Request) {
     ];
 
     if (!alreadySaved) {
-      // First capture — insert the enquiries row so it appears in
-      // /admin/enquiries alongside contact-form submissions.
+      // First capture — insert BOTH the enquiries row AND a jobs row
+      // with status='pending_review' so Thomas can review + quote
+      // from /admin/jobs?status=pending_review directly. Enquiry
+      // status is 'converted' (already turned into a job) and its
+      // converted_to_job_id points at the created job for audit.
       const supabase = getServiceClient();
-      let insertedId: string | null = null;
+      let enquiryId: string | null = null;
+      let jobId: string | null = null;
+
       if (supabase) {
-        const row = buildEnquiryRow(newCapture, transcript);
-        const { data: inserted, error } = await supabase
-          .from("enquiries")
-          .insert(row)
+        // 1. Insert the job first — enquiries.converted_to_job_id
+        //    needs its id.
+        const jobRow = buildJobRow(newCapture);
+        const { data: insertedJob, error: jobErr } = await supabase
+          .from("jobs")
+          .insert(jobRow)
           .select("id")
           .single();
-        if (error) {
-          console.error("[enquiry] insert failed", error);
-        } else if (inserted) {
-          insertedId = inserted.id as string;
-          newCapture.enquiry_id = insertedId;
+        if (jobErr) {
+          console.error("[enquiry] job insert failed", jobErr);
+        } else if (insertedJob) {
+          jobId = insertedJob.id as string;
+        }
+
+        // 2. Insert the enquiry — if the job insert worked, mark it
+        //    converted + link the two. If the job insert failed, drop
+        //    the enquiry in as 'new' so Thomas can still see the
+        //    contact details in /admin/enquiries.
+        const enquiryRow = buildEnquiryRow(
+          newCapture,
+          transcript,
+          jobId ? "converted" : "new",
+        );
+        const enquiryInsert = jobId
+          ? { ...enquiryRow, converted_to_job_id: jobId }
+          : enquiryRow;
+        const { data: insertedEnq, error: enqErr } = await supabase
+          .from("enquiries")
+          .insert(enquiryInsert)
+          .select("id")
+          .single();
+        if (enqErr) {
+          console.error("[enquiry] enquiry insert failed", enqErr);
+        } else if (insertedEnq) {
+          enquiryId = insertedEnq.id as string;
+          newCapture.enquiry_id = enquiryId;
         }
       } else {
         console.warn("[enquiry] Supabase not configured — Doug capture NOT persisted");
       }
 
-      // Fire notification email even if the insert failed — Thomas
-      // still gets the lead; he can create a client + job manually
-      // if the DB row didn't land.
+      // Fire notification email even if the inserts failed — Thomas
+      // still gets the lead; he can create rows manually if needed.
+      // Prefer linking to the job (the primary review destination)
+      // when we have one; fall back to the enquiry otherwise.
       const notifyTo = process.env.ENQUIRY_NOTIFY_EMAIL;
       if (notifyTo) {
         const { subject, html, text } = formatEnquiryEmail({
           capture: newCapture,
           transcript,
-          enquiryId: insertedId ?? undefined,
+          jobId: jobId ?? undefined,
+          enquiryId: enquiryId ?? undefined,
           appBaseUrl: APP_BASE_URL,
         });
         sendEmail({ to: notifyTo, subject, html, text }).catch((e) =>
@@ -240,14 +273,14 @@ export async function POST(req: Request) {
         console.warn("[enquiry] ENQUIRY_NOTIFY_EMAIL not set — capture NOT emailed", newCapture);
       }
     } else {
-      // Subsequent capture — update the existing row so late-added
-      // fields (extra job details, corrected phone) reach Thomas.
-      // Best-effort; no notification re-fires.
+      // Subsequent capture — update the existing enquiry row so
+      // late-added fields (extra job details, corrected phone)
+      // reach Thomas. Never touch the JOB row — Thomas may already
+      // have started scheduling it. Best-effort; no notification
+      // re-fires.
       const supabase = getServiceClient();
       if (supabase && newCapture.enquiry_id) {
         const row = buildEnquiryRow(newCapture, transcript);
-        // Never touch `status` on an update — Thomas may have
-        // marked the enquiry contacted / converted already.
         const { status: _s, ...updateFields } = row;
         const { error } = await supabase
           .from("enquiries")

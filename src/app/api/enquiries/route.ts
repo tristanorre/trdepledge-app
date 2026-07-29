@@ -9,8 +9,12 @@ import { after } from "@/lib/after";
 
 export const runtime = "nodejs";
 
+// Every field on the contact form is now mandatory — Thomas can't
+// follow up a lead that's missing phone, client type, or a job
+// description. Aligns with Doug's capture requirements too.
 const REQUIRED_FIELDS = [
-  "first_name", "last_name", "email", "suburb", "service_type",
+  "first_name", "last_name", "email", "phone",
+  "suburb", "service_type", "client_type", "message",
 ] as const;
 
 // Per-field length caps. Generous enough that no real human gets cut off
