@@ -223,6 +223,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <div style={{ ...cardStyle, marginTop: 20 }}>
           <JobQuotePanel
             job={j}
+            materials={cost.material_lines}
             materialsCents={cost.materials_cents}
             rateCents={cost.rate_cents}
             xeroConnected={xeroConnected}

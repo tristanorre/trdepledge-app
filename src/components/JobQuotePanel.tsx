@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { fmtMoney } from "@/lib/cost";
 import type { Job } from "@/lib/types";
@@ -10,17 +10,29 @@ import type { Job } from "@/lib/types";
 //   1. Enters hours-per-worker + worker count
 //   2. Sees the labour estimate update live
 //   3. Adds materials (separately, via the existing materials panel)
-//   4. Reviews the total + clicks Send Quote to Xero
+//   4. Reviews the total + edits any line descriptions in the preview table
+//   5. Clicks Send Quote to Xero
 //
-// Materials and the materials-cents total are passed in from the
-// server-rendered page so this card reflects the same numbers Thomas
-// sees in the Materials section above.
-//
-// After a quote has been sent, the card shows the send timestamp,
-// Xero quote ID, and a hint that he should manage acceptance in Xero.
+// Materials + rate are passed in from the server-rendered page so
+// this card reflects the same numbers Thomas sees in the Materials
+// section above. The preview lines are computed CLIENT-SIDE (labour
+// derives from live hoursPerWorker × workerCount) and mirror what the
+// server's buildLineItems() will emit — critical that they stay in
+// sync with src/lib/xero-invoice.ts.
+
+// Shape of each material line passed in — matches CostBreakdown.material_lines.
+type MaterialLine = {
+  name: string;
+  qty: number;
+  markup_percent: number;
+  line_total_cents: number;
+};
 
 type Props = {
   job: Job;
+  // Individual material lines — used to render editable preview
+  // descriptions per material item.
+  materials: MaterialLine[];
   // Sum of all material line totals (after markup), in cents. Computed
   // server-side from the same materials data the page uses elsewhere.
   materialsCents: number;
@@ -31,7 +43,56 @@ type Props = {
   xeroConnected: boolean;
 };
 
-export default function JobQuotePanel({ job, materialsCents, rateCents, xeroConnected }: Props) {
+// Builds the same preview line items the server will emit — MUST
+// stay aligned with buildLineItems() in src/lib/xero-invoice.ts. If
+// that function changes labour wording, aged-care suffix rules, or
+// materials formatting, update this too or the preview and the sent
+// quote will disagree.
+function buildQuotePreview(args: {
+  clientType: string;
+  hoursPerWorker: number;
+  workerCount: number;
+  rateCents: number;
+  materials: MaterialLine[];
+}): Array<{ description: string; qty: string; unit: string; total: string }> {
+  const { clientType, hoursPerWorker, workerCount, rateCents, materials } = args;
+  const isNdis = clientType === "NDIS";
+  const isAged = clientType === "Aged Care";
+  const lines: Array<{ description: string; qty: string; unit: string; total: string }> = [];
+
+  const totalWorkerHours = hoursPerWorker * workerCount;
+  const labourCents = Math.round(totalWorkerHours * rateCents);
+  if (labourCents > 0) {
+    const workerSuffix = workerCount > 1 ? ` (${workerCount} workers)` : "";
+    lines.push({
+      description: isNdis
+        ? `NDIS support — labour${workerSuffix}`
+        : `Garden / yard work — labour${workerSuffix}`,
+      qty: (Math.round(totalWorkerHours * 1000) / 1000).toString(),
+      unit: fmtMoney(rateCents),
+      total: fmtMoney(labourCents),
+    });
+  }
+
+  for (const m of materials) {
+    const unitCents = m.qty > 0 ? Math.round(m.line_total_cents / m.qty) : 0;
+    lines.push({
+      description: `${m.name}${m.markup_percent ? ` (incl ${m.markup_percent}% markup)` : ""}`,
+      qty: (Math.round(m.qty * 1000) / 1000).toString(),
+      unit: fmtMoney(unitCents),
+      total: fmtMoney(m.line_total_cents),
+    });
+  }
+
+  if (isAged && lines.length > 0) {
+    lines[0].description += " · Aged Care";
+  }
+  return lines;
+}
+
+export default function JobQuotePanel({
+  job, materials, materialsCents, rateCents, xeroConnected,
+}: Props) {
   const router = useRouter();
   const [hoursPerWorker, setHoursPerWorker] = useState<string>(
     job.quote_hours_per_worker != null ? String(job.quote_hours_per_worker) : ""
@@ -46,6 +107,39 @@ export default function JobQuotePanel({ job, materialsCents, rateCents, xeroConn
   const parsedWorkers = Number.parseInt(workerCount, 10);
   const validEstimate = Number.isFinite(parsedHours) && parsedHours > 0
     && Number.isFinite(parsedWorkers) && parsedWorkers > 0;
+
+  // Preview lines rebuild whenever labour inputs or materials change.
+  // These are the DEFAULT descriptions — user edits (below) win over them.
+  const previewLines = useMemo(
+    () => buildQuotePreview({
+      clientType: job.client_type,
+      hoursPerWorker: validEstimate ? parsedHours : 0,
+      workerCount: validEstimate ? parsedWorkers : 0,
+      rateCents,
+      materials,
+    }),
+    [job.client_type, parsedHours, parsedWorkers, rateCents, materials, validEstimate],
+  );
+
+  // Description edits keyed by line INDEX. When the underlying line
+  // shape changes (materials added, worker count flips singular/
+  // plural), we prune stale keys so the map doesn't hold overrides
+  // for lines that no longer exist.
+  const [overrides, setOverrides] = useState<Record<number, string>>({});
+  const previousLineCountRef = useRef(previewLines.length);
+  useEffect(() => {
+    if (previousLineCountRef.current !== previewLines.length) {
+      setOverrides({});
+      previousLineCountRef.current = previewLines.length;
+    }
+  }, [previewLines.length]);
+
+  function updateDescription(idx: number, value: string) {
+    setOverrides((prev) => ({ ...prev, [idx]: value }));
+  }
+  function descriptionFor(idx: number): string {
+    return overrides[idx] ?? previewLines[idx]?.description ?? "";
+  }
 
   // Live total — labour = hours × workers × rate, plus materials.
   const estimate = useMemo(() => {
@@ -107,7 +201,14 @@ export default function JobQuotePanel({ job, materialsCents, rateCents, xeroConn
     setBusy("send");
     setError(null);
     try {
-      const res = await fetch(`/api/admin/jobs/${job.id}/xero-quote`, { method: "POST" });
+      // Send the resolved descriptions (overrides merged with defaults)
+      // so Xero receives whatever's currently on-screen in the preview.
+      const lineDescriptions = previewLines.map((_, i) => descriptionFor(i));
+      const res = await fetch(`/api/admin/jobs/${job.id}/xero-quote`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ line_descriptions: lineDescriptions }),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(
@@ -193,6 +294,50 @@ export default function JobQuotePanel({ job, materialsCents, rateCents, xeroConn
           <span>{fmtMoney(estimate.totalCents)}</span>
         </div>
       </div>
+
+      {!alreadySent && validEstimate && previewLines.length > 0 && (
+        <div style={previewWrapStyle}>
+          <div style={previewHeaderStyle}>
+            Quote lines going to Xero — edit any description before sending
+          </div>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={{ ...thStyle, textAlign: "left" }}>Description</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 70 }}>Qty</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 80 }}>Unit</th>
+                  <th style={{ ...thStyle, textAlign: "right", width: 80 }}>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewLines.map((line, i) => (
+                  <tr key={i}>
+                    <td style={tdStyle}>
+                      <input
+                        type="text"
+                        value={descriptionFor(i)}
+                        onChange={(e) => updateDescription(i, e.target.value)}
+                        disabled={busy !== null}
+                        aria-label={`Description for quote line ${i + 1}`}
+                        style={previewInputStyle}
+                        maxLength={500}
+                      />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>{line.qty}</td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>{line.unit}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>{line.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={previewHintStyle}>
+            Qty and pricing come from the labour estimate + materials above.
+            Change those to update the numbers.
+          </div>
+        </div>
+      )}
 
       {!alreadySent && (
         <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
@@ -330,4 +475,47 @@ const errorStyle: React.CSSProperties = {
   background: "rgba(220,38,38,0.10)",
   color: "#B91C1C",
   borderRadius: 8, fontSize: 13, fontWeight: 600,
+};
+
+// Preview table (mirrors the SendToXeroButton styling for consistency
+// across the invoice + quote flows).
+const previewWrapStyle: React.CSSProperties = {
+  marginTop: 16,
+};
+const previewHeaderStyle: React.CSSProperties = {
+  fontSize: 11, fontWeight: 800, color: "var(--gray)",
+  letterSpacing: "0.5px", textTransform: "uppercase",
+  marginBottom: 8,
+};
+const previewHintStyle: React.CSSProperties = {
+  fontSize: 12, color: "var(--gray)", marginTop: 8, lineHeight: 1.5,
+};
+const tableWrapStyle: React.CSSProperties = {
+  background: "white", borderRadius: 10,
+  border: "1px solid rgba(0,0,0,0.08)",
+  overflowX: "auto",
+};
+const tableStyle: React.CSSProperties = {
+  width: "100%", borderCollapse: "collapse", minWidth: 500,
+};
+const thStyle: React.CSSProperties = {
+  fontSize: 11, fontWeight: 800, letterSpacing: "0.6px",
+  textTransform: "uppercase", color: "var(--gray)",
+  padding: "10px 10px",
+  borderBottom: "1px solid var(--gray-light)",
+  background: "var(--off)",
+};
+const tdStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  borderBottom: "1px solid var(--gray-light)",
+  fontSize: 13, color: "var(--navy)",
+  verticalAlign: "middle",
+};
+const previewInputStyle: React.CSSProperties = {
+  width: "100%", padding: "8px 10px",
+  fontSize: 13, fontFamily: "inherit",
+  border: "1.5px solid rgba(0,0,0,0.15)",
+  borderRadius: 8,
+  background: "white", color: "var(--navy)",
+  boxSizing: "border-box",
 };

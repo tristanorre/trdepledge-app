@@ -138,6 +138,10 @@ export async function sendQuoteForJob(
   adminUserId: string,
   job: Job & { client: { id: string; name: string; email: string | null; xero_contact_id: string | null } | null },
   cost: CostBreakdown,
+  // Same shape as sendInvoiceForJob — positional per-line
+  // Description overrides from the JobQuotePanel preview UI. Empty
+  // array = all auto-generated defaults.
+  descriptionOverrides: Array<string | null | undefined> = [],
 ): Promise<{ ok: true; quote_id: string; quote_number: string | null } | { ok: false; error: string; detail?: unknown }> {
   const tokens = await getValidTokens(supabase, adminUserId);
   if (!tokens) return { ok: false, error: "not_connected" };
@@ -155,7 +159,7 @@ export async function sendQuoteForJob(
   if (!contactId) return { ok: false, error: "contact_lookup_failed" };
 
   const salesAccountCode = await getXeroSalesAccountCode(supabase);
-  const lineItems = buildLineItems(job, cost, { quoteMode: true, salesAccountCode });
+  const lineItems = buildLineItems(job, cost, { quoteMode: true, salesAccountCode, descriptionOverrides });
   if (lineItems.length === 0) return { ok: false, error: "nothing_to_quote" };
 
   // Quote dates: issue today, valid for 30 days. Xero's Quote shape

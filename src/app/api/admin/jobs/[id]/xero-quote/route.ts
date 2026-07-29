@@ -15,16 +15,33 @@ export const runtime = "nodejs";
 // list. Xero generates the customer-facing PDF and lets Thomas hit
 // "Send" from there.
 //
+// Optional body:
+//   { line_descriptions?: Array<string | null> }
+//     Positional overrides for the auto-generated quote line
+//     descriptions — mirrors the invoice-send flow so Thomas/Brad
+//     can retype the wording before it lands in Xero.
+//
 // Idempotent-ish: if the job already has an `xero_quote_id`, returns
 // that immediately. Resending requires Thomas to clear the field
 // first (or wait until status moves past pending_review).
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const auth = await requireApiAdmin();
   if (auth instanceof NextResponse) return auth;
   const { session } = auth;
 
   const supabase = requireSupabase();
   if (supabase instanceof NextResponse) return supabase;
+
+  // Optional body — empty body = all auto-generated descriptions.
+  let descriptionOverrides: Array<string | null> = [];
+  try {
+    const raw = await req.json().catch(() => ({}));
+    if (raw && typeof raw === "object" && Array.isArray((raw as Record<string, unknown>).line_descriptions)) {
+      descriptionOverrides = ((raw as Record<string, unknown>).line_descriptions as unknown[]).map((v) =>
+        typeof v === "string" ? v.slice(0, 500) : null,
+      );
+    }
+  } catch { /* empty body → no overrides */ }
 
   const [{ data: job }, { data: matRows }, rates] = await Promise.all([
     supabase
@@ -92,7 +109,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   const estimate = calculateQuoteEstimate(j, hoursEstimate, workerCountEstimate, materials, rates);
 
-  const result = await sendQuoteForJob(supabase, session.user.id, j, estimate);
+  const result = await sendQuoteForJob(supabase, session.user.id, j, estimate, descriptionOverrides);
   if (!result.ok) {
     return NextResponse.json({ error: result.error, detail: result.detail }, { status: 502 });
   }
