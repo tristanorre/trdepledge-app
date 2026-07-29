@@ -1,11 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { sendEmail } from "@/lib/email";
+import { getServiceClient } from "@/lib/supabase";
 import {
   DOUG_MODEL, DOUG_MAX_TOKENS, DOUG_SYSTEM_PROMPT,
-  CAPTURE_ENQUIRY_TOOL, mergeCapture, formatEnquiryEmail,
+  CAPTURE_ENQUIRY_TOOL, mergeCapture, formatEnquiryEmail, buildEnquiryRow,
   MAX_MESSAGES, MAX_MESSAGE_CHARS, MAX_BODY_BYTES, RATE_LIMIT_PER_MINUTE,
   type CapturedEnquiry,
 } from "@/lib/doug";
+
+const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL
+  ?? "https://trdepledgegardeningandmaintenance.com";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -182,27 +186,75 @@ export async function POST(req: Request) {
     }
   }
 
-  // Only email Thomas the FIRST time Doug flips ready_to_capture=true
-  // in this session. Compare against the previous capture state so
-  // subsequent turns (which keep re-writing ready_to_capture=true)
-  // don't spam him with duplicate notifications.
+  // Persist + notify the FIRST time Doug flips ready_to_capture=true.
+  // Subsequent tool calls re-write ready_to_capture=true; the
+  // enquiry_id sentinel below prevents duplicate DB rows and
+  // duplicate emails. Doug can still edit the row later by calling
+  // the tool again — the app UPDATE-s in place using enquiry_id.
   const nowReady = newCapture.ready_to_capture === true;
-  const wasReady = prevCapture.ready_to_capture === true;
-  if (toolCalledThisTurn && nowReady && !wasReady) {
+  const alreadySaved = !!newCapture.enquiry_id;
+
+  if (toolCalledThisTurn && nowReady) {
     const transcript = [
       ...parsed.map((m) => ({ role: m.role, text: m.content })),
       ...(reply.trim() ? [{ role: "assistant" as const, text: reply.trim() }] : []),
     ];
-    const notifyTo = process.env.ENQUIRY_NOTIFY_EMAIL;
-    if (notifyTo) {
-      const { subject, html, text } = formatEnquiryEmail({ capture: newCapture, transcript });
-      // Best-effort — swallow errors so a mail hiccup never breaks
-      // the visitor's chat.
-      sendEmail({ to: notifyTo, subject, html, text }).catch((e) =>
-        console.error("[enquiry] notify email failed", e),
-      );
+
+    if (!alreadySaved) {
+      // First capture — insert the enquiries row so it appears in
+      // /admin/enquiries alongside contact-form submissions.
+      const supabase = getServiceClient();
+      let insertedId: string | null = null;
+      if (supabase) {
+        const row = buildEnquiryRow(newCapture, transcript);
+        const { data: inserted, error } = await supabase
+          .from("enquiries")
+          .insert(row)
+          .select("id")
+          .single();
+        if (error) {
+          console.error("[enquiry] insert failed", error);
+        } else if (inserted) {
+          insertedId = inserted.id as string;
+          newCapture.enquiry_id = insertedId;
+        }
+      } else {
+        console.warn("[enquiry] Supabase not configured — Doug capture NOT persisted");
+      }
+
+      // Fire notification email even if the insert failed — Thomas
+      // still gets the lead; he can create a client + job manually
+      // if the DB row didn't land.
+      const notifyTo = process.env.ENQUIRY_NOTIFY_EMAIL;
+      if (notifyTo) {
+        const { subject, html, text } = formatEnquiryEmail({
+          capture: newCapture,
+          transcript,
+          enquiryId: insertedId ?? undefined,
+          appBaseUrl: APP_BASE_URL,
+        });
+        sendEmail({ to: notifyTo, subject, html, text }).catch((e) =>
+          console.error("[enquiry] notify email failed", e),
+        );
+      } else {
+        console.warn("[enquiry] ENQUIRY_NOTIFY_EMAIL not set — capture NOT emailed", newCapture);
+      }
     } else {
-      console.warn("[enquiry] ENQUIRY_NOTIFY_EMAIL not set — capture NOT emailed", newCapture);
+      // Subsequent capture — update the existing row so late-added
+      // fields (extra job details, corrected phone) reach Thomas.
+      // Best-effort; no notification re-fires.
+      const supabase = getServiceClient();
+      if (supabase && newCapture.enquiry_id) {
+        const row = buildEnquiryRow(newCapture, transcript);
+        // Never touch `status` on an update — Thomas may have
+        // marked the enquiry contacted / converted already.
+        const { status: _s, ...updateFields } = row;
+        const { error } = await supabase
+          .from("enquiries")
+          .update(updateFields)
+          .eq("id", newCapture.enquiry_id);
+        if (error) console.error("[enquiry] follow-up update failed", error);
+      }
     }
   }
 
