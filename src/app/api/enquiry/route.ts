@@ -162,14 +162,15 @@ export async function POST(req: Request) {
 
   const client = new Anthropic({ apiKey });
 
-  // Agentic tool-use loop. Claude 4-family emits tool calls with
-  // stop_reason='tool_use' and expects a tool_result before
-  // producing the next visitor-facing text. Previously we made ONE
-  // call and used a canned "Righto…" fallback whenever the response
-  // was tool-only — which led Doug to appear to end the conversation
-  // the moment he called capture_enquiry, even mid-intake. This
-  // loop pretends every capture_enquiry call succeeded and lets the
-  // model produce its actual next question.
+  // Agentic tool-use loop, but with an important twist: STOP the
+  // loop as soon as any round emits visitor-facing text. Claude
+  // often returns text + tool_use in the same response with
+  // stop_reason='tool_use' — the text IS Doug's reply to the
+  // visitor; sending tool_result back would just make him repeat
+  // himself (which we saw: "What's your first name, mate?What's
+  // your first name, mate?"). Only loop when the response is
+  // tool-use ONLY (no text), which is the case where we truly
+  // need the model to produce its next visitor-facing text.
   const conversation: MessageParam[] = parsed.map((m) => ({ role: m.role, content: m.content }));
   let reply = "";
   let newCapture: CapturedEnquiry = { ...prevCapture };
@@ -188,10 +189,12 @@ export async function POST(req: Request) {
         messages: conversation,
       });
 
+      // Collect text + tool uses from THIS round only.
+      let roundText = "";
       const toolUses: ToolUseBlock[] = [];
       for (const block of modelResp.content) {
         if (block.type === "text") {
-          reply += block.text;
+          roundText += block.text;
         } else if (block.type === "tool_use") {
           toolUses.push(block);
           if (block.name === "capture_enquiry") {
@@ -202,20 +205,29 @@ export async function POST(req: Request) {
         }
       }
 
-      // If the model didn't ask for a tool result, the turn is over.
-      if (modelResp.stop_reason !== "tool_use" || toolUses.length === 0) break;
+      // If this round produced text — that IS the reply. Stop looping;
+      // no need to feed back tool_result and risk a re-say.
+      if (roundText.trim()) {
+        reply = roundText;
+        break;
+      }
 
-      // Feed a synthetic success result back so the model produces
-      // its next visitor-facing text. Every capture_enquiry returns
-      // {ok:true} — the app is the source of truth for validity, not
-      // the tool's return.
-      conversation.push({ role: "assistant", content: modelResp.content });
-      const toolResults: ToolResultBlockParam[] = toolUses.map((tu) => ({
-        type: "tool_result",
-        tool_use_id: tu.id,
-        content: JSON.stringify({ ok: true }),
-      }));
-      conversation.push({ role: "user", content: toolResults });
+      // No text but the model asked for a tool result — feed one back
+      // so the next round can produce visitor-facing text.
+      if (modelResp.stop_reason === "tool_use" && toolUses.length > 0) {
+        conversation.push({ role: "assistant", content: modelResp.content });
+        const toolResults: ToolResultBlockParam[] = toolUses.map((tu) => ({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify({ ok: true }),
+        }));
+        conversation.push({ role: "user", content: toolResults });
+        continue;
+      }
+
+      // Nothing to loop on — model returned an empty response with
+      // no tool call. Break; the outer fallback below picks up.
+      break;
     }
   } catch (err) {
     console.error("[enquiry] anthropic call failed", err);
