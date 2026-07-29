@@ -164,6 +164,18 @@ export async function maybeSendReviewOnCompletion(
 ): Promise<void> {
   if (prevStatus === "completed") return;
   if (nextStatus !== "completed") return;
+  // Workers can now clock in/out multiple times per job — a job can
+  // flip completed → in_progress → completed if they leave and come
+  // back. The client should NOT get a duplicate SMS on every
+  // re-completion; only send if we've never sent a request for this
+  // job. Manual /admin/jobs/[id]/send-review-request still exists
+  // as the resend path if Thomas ever needs to trigger one again.
+  const { data: existing } = await supabase
+    .from("review_requests")
+    .select("sent_at")
+    .eq("job_id", jobId)
+    .maybeSingle();
+  if (existing?.sent_at) return;
   try {
     await sendReviewRequestForJob(supabase, jobId);
   } catch (err) {

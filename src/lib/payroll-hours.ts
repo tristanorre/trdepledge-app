@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { hoursForEntry, type TimeLog, type TimeEntry } from "@/lib/cost";
+import { hoursForEntry, sessionsOf, type TimeLog } from "@/lib/cost";
 import { toISODate } from "@/lib/dates";
 
 // Pulls clocked hours (from jobs.time_log) into a per-(worker, day)
@@ -53,17 +53,20 @@ export async function computeClockedHoursForWeek(
   for (const row of (data ?? []) as Array<{ id: string; time_log: TimeLog | null }>) {
     const log = row.time_log ?? {};
     for (const wid of workerIds) {
-      const entry: TimeEntry | undefined = log[wid];
-      if (!entry?.start) continue;
-      // Bucket by Adelaide-local start date. The end/breaks may span
-      // an unusual boundary in theory; in practice these are 4-8h
-      // day shifts, so all hours belong to the start-date bucket.
-      const startedOn = toISODate(new Date(entry.start));
-      if (startedOn < weekStartIso || startedOn > weekEndIso) continue;
-      const hrs = hoursForEntry(entry);
-      if (hrs <= 0) continue;
-      const key = clockedHoursKey(wid, startedOn);
-      out[key] = round2((out[key] ?? 0) + hrs);
+      // Iterate every session (workers can clock in/out multiple
+      // times per job now). Each session is bucketed independently
+      // by its own start date, so a worker who clocked a morning
+      // session on one day and an afternoon session on the next
+      // gets both days credited correctly.
+      for (const session of sessionsOf(log[wid])) {
+        if (!session.start) continue;
+        const startedOn = toISODate(new Date(session.start));
+        if (startedOn < weekStartIso || startedOn > weekEndIso) continue;
+        const hrs = hoursForEntry(session);
+        if (hrs <= 0) continue;
+        const key = clockedHoursKey(wid, startedOn);
+        out[key] = round2((out[key] ?? 0) + hrs);
+      }
     }
   }
   return out;

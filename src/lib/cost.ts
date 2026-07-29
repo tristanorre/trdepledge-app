@@ -57,28 +57,60 @@ export type CostBreakdown = {
   total_cents: number;
 };
 
-// Per-worker time entry on a job.
+// A single session on a job — one clock-in / clock-out pair with any
+// breaks that fell inside it. Workers can have MULTIPLE sessions per
+// job now (they can leave to attend another job and return later),
+// so the per-worker payload is an ARRAY of these.
 //
-// `breaks` is a list of paused intervals during the shift. Each one
-// is a `{ start, end? }` pair. While a worker is currently on break
-// the most recent entry has a `start` but no `end`. Break minutes
-// are SUBTRACTED from billable on-site time inside
-// `billingForEntry()` — you don't pay people for being on break.
+// `breaks` is a list of paused intervals during that specific
+// session. Each one is a `{ start, end? }` pair. While a worker is
+// currently on break the most recent entry has a `start` but no
+// `end`. Break minutes are SUBTRACTED from billable on-site time
+// inside `billingForEntry()` — you don't pay people for being on
+// break.
 //
 // An open break (end missing) counts up to "now" the same way an
-// open shift does, so the cost preview stays accurate live.
+// open session does, so the cost preview stays accurate live.
 export type BreakEntry = { start: string; end?: string };
-export type TimeEntry = {
+export type SessionEntry = {
   start?: string;
   end?: string;
   breaks?: BreakEntry[];
 };
-export type TimeLog = Record<string, TimeEntry>;
+// Backwards-compat alias — older imports still say `TimeEntry`. New
+// code should use `SessionEntry` for a single shift.
+export type TimeEntry = SessionEntry;
 
-// Sum of break minutes in an entry. An open break (no end) counts
-// up to `now` so the in-progress total reflects what's currently
-// happening.
-export function breakMinutesForEntry(entry: TimeEntry | undefined, now = new Date()): number {
+// Per-worker value in `jobs.time_log`. Historically stored as a
+// single SessionEntry (one shift). Now stored as SessionEntry[]. The
+// jsonb column tolerates either — `sessionsOf()` normalises both
+// shapes on read.
+export type TimeLogValue = SessionEntry | SessionEntry[];
+export type TimeLog = Record<string, TimeLogValue>;
+
+// Normalise a per-worker log value to a session array. Handles:
+//   * undefined / null / {}         → []
+//   * legacy single entry            → [entry]  (when {start,...})
+//   * new sessions array             → the array (drops obviously-empty entries)
+// Never throws — anything unrecognisable becomes [].
+export function sessionsOf(value: TimeLogValue | null | undefined): SessionEntry[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter((s): s is SessionEntry => !!s && typeof s === "object");
+  }
+  if (typeof value === "object") {
+    // Legacy single-entry shape. Treat as [entry] iff it looks like
+    // a session (has at least `start`). Empty legacy objects → [].
+    if ((value as SessionEntry).start) return [value as SessionEntry];
+    return [];
+  }
+  return [];
+}
+
+// Sum of break minutes in a single session. An open break (no end)
+// counts up to `now` so the in-progress total reflects what's
+// currently happening.
+export function breakMinutesForEntry(entry: SessionEntry | undefined, now = new Date()): number {
   if (!entry?.breaks?.length) return 0;
   let total = 0;
   for (const b of entry.breaks) {
@@ -91,10 +123,10 @@ export function breakMinutesForEntry(entry: TimeEntry | undefined, now = new Dat
   return total;
 }
 
-// Net working hours for a single worker (or the open clock if `end`
+// Net working hours for a single SESSION (or the open clock if `end`
 // is missing). Break time is subtracted. If clocked in but not out,
 // count up to "now" so the in-progress total stays meaningful.
-export function hoursForEntry(entry: TimeEntry | undefined, now = new Date()): number {
+export function hoursForEntry(entry: SessionEntry | undefined, now = new Date()): number {
   if (!entry?.start) return 0;
   const start = new Date(entry.start);
   const end = entry.end ? new Date(entry.end) : now;
@@ -105,11 +137,18 @@ export function hoursForEntry(entry: TimeEntry | undefined, now = new Date()): n
   return Math.max(0, grossHours - breakHours);
 }
 
-// Sum of hours across all workers in a `time_log`.
+// Sum of hours for a single WORKER across all their sessions.
+export function hoursForWorker(value: TimeLogValue | undefined, now = new Date()): number {
+  let total = 0;
+  for (const s of sessionsOf(value)) total += hoursForEntry(s, now);
+  return total;
+}
+
+// Sum of hours across every worker × every session in a `time_log`.
 export function totalHoursFromTimeLog(time_log: TimeLog | undefined, now = new Date()): number {
   if (!time_log) return 0;
   let total = 0;
-  for (const entry of Object.values(time_log)) total += hoursForEntry(entry, now);
+  for (const value of Object.values(time_log)) total += hoursForWorker(value, now);
   return total;
 }
 
@@ -182,13 +221,25 @@ export function calculateCost(
   let billed_blocks = 0;
   let labour_cents = 0;
 
-  for (const entry of Object.values(time_log)) {
-    const b = billingForEntry(entry, rate_cents, waiting_minutes, now);
-    if (b.billed_blocks > 0) workers_billed += 1;
-    hours         += b.on_site_hours;
-    billed_hours  += b.billed_hours;
-    billed_blocks += b.billed_blocks;
-    labour_cents  += b.labour_cents;
+  // Waiting time only applies once per worker (not once per session),
+  // so we bill the FIRST session with the waiting minutes baked in
+  // and every subsequent session with zero waiting minutes. Otherwise
+  // a worker who left and came back would get waiting time added
+  // twice to their billable minutes.
+  for (const value of Object.values(time_log)) {
+    const sessions = sessionsOf(value);
+    if (sessions.length === 0) continue;
+    let workerHasBilledBlocks = false;
+    for (let i = 0; i < sessions.length; i++) {
+      const wait = i === 0 ? waiting_minutes : 0;
+      const b = billingForEntry(sessions[i], rate_cents, wait, now);
+      if (b.billed_blocks > 0) workerHasBilledBlocks = true;
+      hours         += b.on_site_hours;
+      billed_hours  += b.billed_hours;
+      billed_blocks += b.billed_blocks;
+      labour_cents  += b.labour_cents;
+    }
+    if (workerHasBilledBlocks) workers_billed += 1;
   }
 
   // Waiting is folded into labour above; this field stays 0 so any

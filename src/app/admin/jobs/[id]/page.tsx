@@ -210,7 +210,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <TimeLogEditor
           jobId={j.id}
           workers={assignedWorkers}
-          initialTimeLog={(j.time_log ?? {}) as Record<string, { start?: string; end?: string }>}
+          initialTimeLog={(j.time_log ?? {}) as Record<string, unknown>}
         />
       </div>
 

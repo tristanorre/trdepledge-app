@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
 import type { JobStatus } from "@/lib/types";
+import type { SessionEntry, TimeLog } from "@/lib/cost";
+import { sessionsOf } from "@/lib/cost";
 import { checkWeeklyMilestones } from "@/lib/milestones";
 import { rollForwardRecurringJob, justCompleted } from "@/lib/recurring-jobs";
 import { maybeSendReviewOnCompletion } from "@/lib/reviews";
@@ -10,36 +12,41 @@ export const runtime = "nodejs";
 
 // PATCH /api/admin/jobs/[id]/time
 //
-// Lets Thomas edit a single worker's clock-in / clock-out times on a
-// job. Workers occasionally forget to clock out; without this route
-// the cost breakdown ticks up forever and the invoice is wrong.
+// Lets Thomas replace a single worker's sessions on a job. Workers
+// can have multiple sessions now — they might clock in, leave for
+// another job, come back and clock in again — so this endpoint
+// operates on the WHOLE sessions array in one call. Simpler and
+// atomic: no session-index bookkeeping between client and server.
 //
 // Body shape:
-//   { worker_id: string, start: string | null, end: string | null }
+//   {
+//     worker_id: string,
+//     sessions: Array<{
+//       start: string,          // ISO
+//       end:   string | null,   // ISO, or null for still-open session
+//       breaks?: Array<{ start: string, end: string | null }>
+//     }> | null
+//   }
 //
-//   - `start` and `end` are ISO timestamps (or null to clear). If both
-//     are null/empty the worker's entry is removed entirely.
-//   - end without start is rejected (a clocked-out-but-never-started
-//     row makes no sense).
-//   - end must be after start.
-//   - worker_id must be in the job's assigned_worker_ids.
+//   - `sessions: null` (or `[]`) removes the worker's entry entirely.
+//   - Each session's end (if present) must be after its start.
+//   - Sessions must not overlap each other for the same worker
+//     (would double-count on billing + payroll).
+//   - Each break must sit inside its enclosing session (best-effort
+//     validation — we reject obvious violations).
 //
-// On success, if the edit means every assigned worker now has both a
-// start AND an end, the job auto-flips to "completed" (same rule as
-// the worker clock-out endpoint). If the edit re-opens a closed
-// worker (set end to null) on a previously-completed job, status
-// rolls back to "in_progress".
+// Status auto-roll: completed iff every assigned worker has ≥1
+// session AND every session has both start AND end. Otherwise
+// in_progress. Re-opens a completed job if an edit reveals an open
+// session.
 
 type Ctx = { params: { id: string } };
 
 type BreakInput = { start: string; end?: string | null };
+type SessionInput = { start: string; end: string | null; breaks?: BreakInput[] };
 type Patch = {
   worker_id: string;
-  start: string | null;
-  end: string | null;
-  // Optional. When provided, replaces the worker's `breaks` array
-  // wholesale. Omit to leave breaks unchanged.
-  breaks: Array<{ start: string; end: string | null }> | undefined;
+  sessions: SessionEntry[] | null;
 };
 
 function parsePatch(raw: unknown): Patch | { error: string } {
@@ -49,44 +56,84 @@ function parsePatch(raw: unknown): Patch | { error: string } {
   const worker_id = String(body.worker_id ?? "").trim();
   if (!worker_id) return { error: "worker_id required" };
 
-  const startRaw = body.start;
-  const endRaw   = body.end;
-  const start = startRaw == null || startRaw === "" ? null : String(startRaw);
-  const end   = endRaw   == null || endRaw   === "" ? null : String(endRaw);
-
-  if (start) {
-    if (Number.isNaN(Date.parse(start))) return { error: "start is not a valid date" };
+  const rawSessions = body.sessions;
+  if (rawSessions === null || rawSessions === undefined) {
+    return { worker_id, sessions: null };
   }
-  if (end) {
-    if (Number.isNaN(Date.parse(end))) return { error: "end is not a valid date" };
-  }
-  if (end && !start) return { error: "Cannot set an end without a start" };
-  if (start && end && Date.parse(end) <= Date.parse(start)) {
-    return { error: "end must be after start" };
+  if (!Array.isArray(rawSessions)) {
+    return { error: "sessions must be an array" };
   }
 
-  // Breaks: optional. If present, must be an array; each break has a
-  // valid start and an optional end (null when the break is still
-  // open). end must be after start when both set.
-  let breaks: Patch["breaks"] = undefined;
-  if (Array.isArray(body.breaks)) {
-    const out: NonNullable<Patch["breaks"]> = [];
-    for (const raw of body.breaks as unknown[]) {
-      if (!raw || typeof raw !== "object") return { error: "break entry invalid" };
-      const b = raw as BreakInput;
-      const bs = b.start ? String(b.start) : "";
-      if (!bs || Number.isNaN(Date.parse(bs))) return { error: "break start is not a valid date" };
-      const be = b.end == null || b.end === "" ? null : String(b.end);
-      if (be && Number.isNaN(Date.parse(be))) return { error: "break end is not a valid date" };
-      if (be && Date.parse(be) <= Date.parse(bs)) {
-        return { error: "break end must be after start" };
-      }
-      out.push({ start: bs, end: be });
+  const parsedSessions: SessionEntry[] = [];
+  for (let i = 0; i < rawSessions.length; i++) {
+    const raw = rawSessions[i];
+    if (!raw || typeof raw !== "object") return { error: `session ${i + 1} invalid` };
+    const s = raw as SessionInput;
+
+    const startStr = s.start ? String(s.start) : "";
+    if (!startStr || Number.isNaN(Date.parse(startStr))) {
+      return { error: `session ${i + 1}: start is not a valid date` };
     }
-    breaks = out;
+    const endStr = s.end == null || s.end === "" ? null : String(s.end);
+    if (endStr && Number.isNaN(Date.parse(endStr))) {
+      return { error: `session ${i + 1}: end is not a valid date` };
+    }
+    if (endStr && Date.parse(endStr) <= Date.parse(startStr)) {
+      return { error: `session ${i + 1}: end must be after start` };
+    }
+
+    const entry: SessionEntry = { start: new Date(startStr).toISOString() };
+    if (endStr) entry.end = new Date(endStr).toISOString();
+
+    if (Array.isArray(s.breaks)) {
+      const breaks: Array<{ start: string; end?: string }> = [];
+      for (let j = 0; j < s.breaks.length; j++) {
+        const rb = s.breaks[j];
+        if (!rb || typeof rb !== "object") return { error: `session ${i + 1} break ${j + 1} invalid` };
+        const b = rb as BreakInput;
+        const bs = b.start ? String(b.start) : "";
+        if (!bs || Number.isNaN(Date.parse(bs))) {
+          return { error: `session ${i + 1} break ${j + 1}: start is not a valid date` };
+        }
+        const be = b.end == null || b.end === "" ? null : String(b.end);
+        if (be && Number.isNaN(Date.parse(be))) {
+          return { error: `session ${i + 1} break ${j + 1}: end is not a valid date` };
+        }
+        if (be && Date.parse(be) <= Date.parse(bs)) {
+          return { error: `session ${i + 1} break ${j + 1}: end must be after start` };
+        }
+        // Break must sit inside the enclosing session.
+        if (Date.parse(bs) < Date.parse(startStr)) {
+          return { error: `session ${i + 1} break ${j + 1}: starts before its session` };
+        }
+        if (endStr && be && Date.parse(be) > Date.parse(endStr)) {
+          return { error: `session ${i + 1} break ${j + 1}: ends after its session` };
+        }
+        const outB: { start: string; end?: string } = { start: new Date(bs).toISOString() };
+        if (be) outB.end = new Date(be).toISOString();
+        breaks.push(outB);
+      }
+      if (breaks.length > 0) entry.breaks = breaks;
+    }
+
+    parsedSessions.push(entry);
   }
 
-  return { worker_id, start, end, breaks };
+  // Reject overlaps between sessions (would double-count billable
+  // minutes). Sort by start to make the check O(n).
+  const sorted = [...parsedSessions]
+    .map((s, i) => ({ i, start: Date.parse(s.start!), end: s.end ? Date.parse(s.end) : Number.POSITIVE_INFINITY }))
+    .sort((a, b) => a.start - b.start);
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].start < sorted[i - 1].end) {
+      return { error: `sessions overlap (session ${sorted[i - 1].i + 1} and ${sorted[i].i + 1})` };
+    }
+  }
+
+  return {
+    worker_id,
+    sessions: parsedSessions.length === 0 ? null : parsedSessions,
+  };
 }
 
 export async function PATCH(req: Request, { params }: Ctx) {
@@ -104,7 +151,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if ("error" in parsed) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const { worker_id, start, end, breaks } = parsed;
+  const { worker_id, sessions } = parsed;
 
   const { data: job, error: loadErr } = await supabase
     .from("jobs")
@@ -123,40 +170,21 @@ export async function PATCH(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Worker is not assigned to this job" }, { status: 400 });
   }
 
-  type Break = { start: string; end?: string };
-  type LogEntry = { start?: string; end?: string; breaks?: Break[] };
-  const fullLog = (job.time_log ?? {}) as Record<string, LogEntry>;
-  const existing = fullLog[worker_id] ?? {};
-
-  // Build the patch.
-  const nextLog: typeof fullLog = { ...fullLog };
-  if (start === null && end === null && breaks === undefined) {
-    // Clear the worker's entry entirely.
+  const fullLog = (job.time_log ?? {}) as TimeLog;
+  const nextLog: TimeLog = { ...fullLog };
+  if (sessions === null) {
     delete nextLog[worker_id];
-  } else if (start === null && end === null && breaks !== undefined) {
-    // Caller passed only `breaks` — keep existing start/end, replace
-    // breaks. Defensive against accidental wipe of an active shift.
-    nextLog[worker_id] = {
-      ...existing,
-      breaks: normaliseBreaks(breaks),
-    };
   } else {
-    const entry: LogEntry = {};
-    if (start) entry.start = new Date(start).toISOString();
-    if (end)   entry.end   = new Date(end).toISOString();
-    // If breaks weren't sent, preserve the existing list. If sent,
-    // replace it.
-    if (breaks !== undefined) entry.breaks = normaliseBreaks(breaks);
-    else if (existing.breaks) entry.breaks = existing.breaks;
-    nextLog[worker_id] = entry;
+    nextLog[worker_id] = sessions;
   }
 
-  // Status auto-roll: completed iff every assigned worker has both
-  // start AND end. If any assigned worker lacks an end (or has no
-  // entry at all), the job is in_progress instead.
+  // Status auto-roll: completed iff every assigned worker has ≥1
+  // session AND every session across the whole log is closed. Any
+  // open session anywhere means the job is still in progress.
   const allClosed = assigned.length > 0 && assigned.every((wid) => {
-    const e = nextLog[wid];
-    return !!e?.start && !!e?.end;
+    const wSessions = sessionsOf(nextLog[wid]);
+    if (wSessions.length === 0) return false;
+    return wSessions.every((s) => !!s.start && !!s.end);
   });
 
   const patch: Record<string, unknown> = { time_log: nextLog };
@@ -178,14 +206,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
     return NextResponse.json({ error: "Could not update job" }, { status: 500 });
   }
 
-  // An admin edit changes the affected worker's weekly hours, so the
-  // milestone check needs to run for that worker (not the admin who
-  // pressed save). Best-effort — never throws.
   await checkWeeklyMilestones(supabase, worker_id);
 
-  // Recurring-client roll-forward: if Thomas's time edit just flipped
-  // the job to "completed" (final missing clock-out filled in), create
-  // the next recurring visit. No-op if not a recurring client.
+  // Downstream completion side-effects — same guards as the worker
+  // clock route. Roll-forward is idempotent per (client, date); the
+  // review helper skips if a request has already been sent for this
+  // job (so re-completion via a multi-session flip-flop doesn't
+  // spam the client).
   if (justCompleted(job.status, patch.status as string | undefined)) {
     await rollForwardRecurringJob(supabase, params.id);
     await maybeSendReviewOnCompletion(supabase, job.status, patch.status as string, params.id);
@@ -193,19 +220,4 @@ export async function PATCH(req: Request, { params }: Ctx) {
 
   revalidatePath(`/admin/jobs/${params.id}`);
   return NextResponse.json({ job: updated });
-}
-
-// Normalise a parsed breaks array: drop the optional null on `end`
-// so the stored shape matches what the worker clock route writes
-// ({ start, end? }), and convert input strings to ISO UTC.
-function normaliseBreaks(
-  input: Array<{ start: string; end: string | null }>,
-): Array<{ start: string; end?: string }> {
-  return input.map((b) => {
-    const out: { start: string; end?: string } = {
-      start: new Date(b.start).toISOString(),
-    };
-    if (b.end) out.end = new Date(b.end).toISOString();
-    return out;
-  });
 }
