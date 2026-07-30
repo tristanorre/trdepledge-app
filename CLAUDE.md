@@ -58,6 +58,40 @@ Both ship from one Vercel deploy on different subdomains.
 - Returning 404 (not 403) for unauthorised access is a deliberate choice —
   don't leak whether a job exists.
 
+### DIY Hire: the availability engine is the single source of truth
+
+- `src/lib/hire/` implements the hire rules **once, server-side**. The public
+  calendar, the admin calendar and Doug's tools all call it. Never
+  re-implement availability in the browser or describe it in a prompt.
+- Split is deliberate: `availability.ts` / `charging.ts` are **pure** (they take
+  an `AvailabilityContext` — today's date, the holds, the changeover gap — and
+  return an answer), `repo.ts` is the only file that touches Supabase. That's
+  what makes the rules unit-testable with no database (`npm run test:unit`).
+- **The invariant:** the days the engine calls unavailable must be a *superset*
+  of what the `no_double_booking` exclusion constraint rejects. The database
+  enforces; the engine predicts. If the engine ever says "free" where the
+  constraint says "no", a customer is told their dates are held and then hits
+  an error.
+- The constraint uses `daterange(starts_on, ends_on, '[]')` — **inclusive both
+  ends**, so the return day is already held. A tool back on Tuesday cannot be
+  collected by someone else on Tuesday. `changeover_days` (per item, default 0)
+  extends that tail further. Verified against the live constraint, not assumed.
+- **Hire money is `numeric(10,2)` in the database, integer cents in the code.**
+  The hire schema diverges from the house cents-everywhere rule, so `repo.ts`
+  converts at the boundary (`toCents` / `toDbAmount`) and every calculation
+  above it is exact integer arithmetic. Don't do arithmetic on the raw column.
+- `src/lib/hire/dates.ts` does its own ISO/epoch-day arithmetic rather than
+  reusing `src/lib/dates.ts`'s `fromISODate`. Hire dates are pure calendar
+  values, and the epoch-day approach is identical on every server zone. The one
+  place a timezone is consulted is `today()`, which delegates to the
+  Adelaide-anchored `todayISO()`. **Never call `new Date()` in hire logic.**
+- Policy copy (the six terms entries) lives only in `src/lib/hire/config.ts`.
+  The accordion and Doug's `hire_policy` tool both read it, so a wording change
+  lands in both at once. Unconfirmed figures are flagged `// UNCONFIRMED` there.
+- `select("*")` is banned on `reservations`. Column lists are explicit because
+  Doug's tools run through the same read path, and customer names/phones/emails
+  must never reach a conversation with a different customer.
+
 ## Code patterns
 
 ### API auth
@@ -137,11 +171,15 @@ src/
 │   └── layout.tsx             # bare html/body + fonts + SW register
 ├── components/                # shared client + server components
 ├── lib/                       # business logic and helpers
+│   └── hire/                  # DIY Hire availability engine (pure rules + repo)
 ├── types/                     # TypeScript declaration files
 └── middleware.ts              # /admin and /worker route gating
 
+unit/                          # pure-logic tests, no browser, no DB (npm run test:unit)
+e2e/                           # Playwright end-to-end suite (npm run test:e2e)
+
 supabase/
-└── migrations/                # 0001..0010 — apply in order
+└── migrations/                # 0001..0033 — apply in order
 
 public/
 ├── images/                    # extracted from marketing prototype
