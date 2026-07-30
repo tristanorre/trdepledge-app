@@ -93,7 +93,13 @@ export type TimeLog = Record<string, TimeLogValue>;
 //   * legacy single entry            → [entry]  (when {start,...})
 //   * new sessions array             → the array (drops obviously-empty entries)
 // Never throws — anything unrecognisable becomes [].
-export function sessionsOf(value: TimeLogValue | null | undefined): SessionEntry[] {
+//
+// Takes `unknown` on purpose: callers pull this straight out of a
+// jsonb column (or an API response body) where the static type is
+// only ever a hopeful assertion. Keeping the parameter wide means
+// no call site needs a cast, and the runtime checks below are the
+// single place that decides what's valid.
+export function sessionsOf(value: unknown): SessionEntry[] {
   if (!value) return [];
   if (Array.isArray(value)) {
     return value.filter((s): s is SessionEntry => !!s && typeof s === "object");

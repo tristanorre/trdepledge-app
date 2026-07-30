@@ -2,15 +2,42 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { BreakEntry, TimeEntry } from "@/lib/cost";
+import { sessionsOf, type BreakEntry, type SessionEntry } from "@/lib/cost";
 
 type Props = {
   jobId: string;
   userId: string;
-  initialTimeLog: TimeEntry;
+  // Raw per-worker value out of jobs.time_log — either the legacy
+  // single-session object or the current SessionEntry[] array.
+  // Normalised via sessionsOf() so both shapes work.
+  initialTimeLog: unknown;
 };
 
 type Action = "in" | "out" | "break-start" | "break-end";
+
+// The session the buttons operate on: the LATEST one. Workers can
+// have several sessions per job (leave for another job, come back) —
+// clock-in appends a new session, clock-out / breaks act on the
+// currently-open (last) one.
+function latestSession(sessions: SessionEntry[]): SessionEntry {
+  return sessions.length > 0 ? sessions[sessions.length - 1] : {};
+}
+
+// Sum of net worked ms across every CLOSED session, excluding the
+// latest-open one (which is displayed live separately).
+function priorSessionsNetMs(sessions: SessionEntry[], now: number): number {
+  if (sessions.length <= 1) return 0;
+  let total = 0;
+  for (const s of sessions.slice(0, -1)) {
+    if (!s?.start) continue;
+    const start = new Date(s.start).getTime();
+    const end = s.end ? new Date(s.end).getTime() : now;
+    const gross = end - start;
+    if (gross <= 0) continue;
+    total += Math.max(0, gross - totalBreakMs(s.breaks, now));
+  }
+  return total;
+}
 
 function fmtElapsed(ms: number): string {
   if (ms < 0) ms = 0;
@@ -44,10 +71,12 @@ function isOnBreak(breaks: BreakEntry[] | undefined): boolean {
 
 export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Props) {
   const router = useRouter();
-  const [log, setLog] = useState<TimeEntry>(initialTimeLog);
+  const [sessions, setSessions] = useState<SessionEntry[]>(() => sessionsOf(initialTimeLog));
   const [busy, setBusy] = useState<null | Action>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+
+  const log = latestSession(sessions);
 
   // Re-render every 30s while clocked in (or on break) so the elapsed
   // and break counters update live.
@@ -69,8 +98,11 @@ export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Prop
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not update");
-      const fullLog = (data.job?.time_log ?? {}) as Record<string, TimeEntry>;
-      setLog(fullLog[userId] ?? {});
+      // The API returns the whole job; pull our own per-worker value
+      // and normalise (it's a SessionEntry[] now, but sessionsOf
+      // tolerates the legacy shape too).
+      const fullLog = (data.job?.time_log ?? {}) as Record<string, unknown>;
+      setSessions(sessionsOf(fullLog[userId]));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
@@ -79,7 +111,7 @@ export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Prop
     }
   }
 
-  // ── State 1: not clocked in yet ────────────────────────────────
+  // ── State 1: no sessions at all — first clock-in ───────────────
   if (!log.start) {
     return (
       <Card>
@@ -106,10 +138,15 @@ export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Prop
     const netMs = Math.max(0, totalElapsedMs - breakMs);
     const onBreak = isOnBreak(log.breaks);
     const lastBreak = onBreak ? log.breaks![log.breaks!.length - 1] : null;
+    const priorMs = priorSessionsNetMs(sessions, now);
+    const sessionNo = sessions.length;
 
     return (
       <Card>
-        <Label>{onBreak ? "On break" : "Clocked in"}</Label>
+        <Label>
+          {onBreak ? "On break" : "Clocked in"}
+          {sessionNo > 1 && ` · visit ${sessionNo}`}
+        </Label>
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "baseline",
           marginBottom: 4,
@@ -121,6 +158,17 @@ export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Prop
             {fmtElapsed(netMs)}
           </span>
         </div>
+        {priorMs > 0 && (
+          <div style={{
+            fontSize: 12, color: "var(--gray)", marginBottom: 8,
+            display: "flex", justifyContent: "space-between",
+          }}>
+            <span>Earlier visits today</span>
+            <span style={{ fontWeight: 700 }}>
+              {fmtElapsed(priorMs)} · total {fmtElapsed(priorMs + netMs)}
+            </span>
+          </div>
+        )}
         {breakMs > 0 && (
           <div style={{
             fontSize: 12, color: "var(--gray)", marginBottom: 12,
@@ -174,19 +222,30 @@ export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Prop
     );
   }
 
-  // ── State 3: both start + end set — completed ──────────────────
+  // ── State 3: latest session closed — show summary + allow a
+  //    return visit (clock back in appends a NEW session).
   const start = new Date(log.start!).getTime();
   const end = new Date(log.end!).getTime();
   const gross = end - start;
   const breakMs = totalBreakMs(log.breaks, end);
   const net = Math.max(0, gross - breakMs);
+  const priorMs = priorSessionsNetMs(sessions, end);
+  const allSessionsNet = priorMs + net;
+  const visitCount = sessions.length;
+
   return (
     <Card>
-      <Label>Completed</Label>
+      <Label>
+        {visitCount > 1 ? `Clocked out · ${visitCount} visits` : "Clocked out"}
+      </Label>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, fontSize: 13 }}>
         <Stat label="Started" value={fmtTimeOfDay(log.start!)} />
         <Stat label="Finished" value={fmtTimeOfDay(log.end!)} />
-        <Stat label="Net time" value={fmtElapsed(net)} highlight />
+        <Stat
+          label={visitCount > 1 ? "This visit" : "Net time"}
+          value={fmtElapsed(net)}
+          highlight
+        />
       </div>
       {breakMs > 0 && (
         <div style={{
@@ -197,6 +256,33 @@ export default function ClockInOutButton({ jobId, userId, initialTimeLog }: Prop
           <span style={{ fontWeight: 700 }}>{fmtElapsed(breakMs)}</span>
         </div>
       )}
+      {visitCount > 1 && (
+        <div style={{
+          marginTop: 12, paddingTop: 12,
+          borderTop: "1px solid rgba(0,0,0,0.08)",
+          display: "flex", justifyContent: "space-between",
+          fontSize: 14, fontWeight: 800, color: "var(--navy)",
+        }}>
+          <span>Total across all {visitCount} visits</span>
+          <span>{fmtElapsed(allSessionsNet)}</span>
+        </div>
+      )}
+
+      {/* Return visit — appends a fresh session. Reopens the job to
+          in_progress server-side if it had auto-completed. */}
+      <button
+        type="button"
+        onClick={() => act("in")}
+        disabled={busy !== null}
+        style={{ ...primaryBtn, marginTop: 14 }}
+      >
+        {busy === "in" ? "Clocking in…" : "▶ Clock back in"}
+      </button>
+      <div style={{ fontSize: 11, color: "var(--gray)", marginTop: 8, textAlign: "center", lineHeight: 1.4 }}>
+        Back on site? Clock back in to start another visit — your earlier time is kept.
+      </div>
+
+      {error && <Err>{error}</Err>}
     </Card>
   );
 }

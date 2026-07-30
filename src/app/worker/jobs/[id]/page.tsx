@@ -102,10 +102,11 @@ export default async function WorkerJobDetailPage({ params }: { params: { id: st
         <ClockInOutButton
           jobId={j.id}
           userId={session.user.id}
-          // Pass only this worker's entry — `time_log` is keyed by
-          // worker uuid since migration 0018, and the button only
-          // ever shows / mutates the current user's clock state.
-          initialTimeLog={(j.time_log?.[session.user.id] ?? {}) as import("@/lib/cost").TimeEntry}
+          // Pass only this worker's value — `time_log` is keyed by
+          // worker uuid since migration 0018, and holds an ARRAY of
+          // sessions since the multi-session change. The button
+          // normalises via sessionsOf() and operates on the latest.
+          initialTimeLog={j.time_log?.[session.user.id] ?? null}
         />
       </div>
 
