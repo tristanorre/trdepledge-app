@@ -15,10 +15,14 @@ export async function GET() {
   // the credentials provider in lib/auth.ts resolves slug → uuid
   // server-side before the bcrypt compare. Names are public anyway
   // (they appear on the About page), so listing them isn't a leak.
+  // Include field-worker admins (Thomas, Bradley) so they can pick
+  // their own name here and get the WORKER view. Logging in via the
+  // Admin tab instead gives them full admin access — same person,
+  // two doors, chosen at login.
   const { data, error } = await supabase
     .from("users")
     .select("public_slug, name, colour")
-    .eq("role", "worker")
+    .or("role.eq.worker,field_worker.eq.true")
     .eq("active", true)
     .order("name");
 

@@ -83,10 +83,16 @@ export const authOptions: NextAuthOptions = {
           if (!workerKey || !pin || !/^\d{4}$/.test(pin)) return null;
 
           const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(workerKey);
+          // Field-worker admins (Thomas, Bradley) can sign in through
+          // the WORKER door with their PIN and get role="worker" for
+          // the session — so they see the worker app (my jobs, clock
+          // in/out, my hours). Signing in through the Admin door with
+          // email+password gives them role="admin" instead. Same
+          // person, two doors, chosen at login.
           const lookup = supabase
             .from("users")
             .select("id, name, role, pin_hash, active, failed_login_attempts, locked_until")
-            .eq("role", "worker")
+            .or("role.eq.worker,field_worker.eq.true")
             .eq("active", true);
           const { data: user, error } = await (looksLikeUuid
             ? lookup.eq("id", workerKey).maybeSingle()
