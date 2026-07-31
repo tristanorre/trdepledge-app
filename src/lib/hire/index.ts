@@ -22,6 +22,7 @@ export * from "./charging";
 export * from "./availability";
 export * from "./booking";
 export {
+  HIRE_PUBLIC_LAUNCH,
   HIRE_PHONE,
   HIRE_PHONE_TEL,
   HIRE_LOCATION,

@@ -14,6 +14,24 @@
 // unconfirmed ones are flagged so the UI can caveat them.
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Whether /hire is ready for the public to find.
+ *
+ * `false` puts `noindex, nofollow` on the page so search engines don't list
+ * it while it's still being finished. The page stays reachable by URL — this
+ * is not access control, just a request to crawlers not to advertise it.
+ *
+ * It is off because two things aren't ready yet:
+ *   1. Every bond figure on the page is a placeholder (see BONDS_CONFIRMED).
+ *      The page states them as fact.
+ *   2. Nothing notifies Thomas when a request arrives (phase 6). A booking
+ *      would sit in the table unseen.
+ *
+ * FLIP THIS TO `true` AT LAUNCH, once bonds are confirmed and the booking
+ * SMS is wired. It's the last item on the pre-launch checklist.
+ */
+export const HIRE_PUBLIC_LAUNCH = false;
+
 /** Thomas's mobile. Confirmed — printed on the flyers. */
 export const HIRE_PHONE = "0474 844 204";
 export const HIRE_PHONE_TEL = "0474844204";
