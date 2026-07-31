@@ -19,6 +19,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@supabase/supabase-js": "^2.45.4",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/functions": "^3.5.0",
     "bcryptjs": "^2.4.3",
     "browser-image-compression": "^2.0.2",
