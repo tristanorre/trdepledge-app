@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Anton, Barlow, Barlow_Condensed } from "next/font/google";
 
 import { HIRE_PUBLIC_LAUNCH } from "@/lib/hire";
@@ -64,6 +65,29 @@ export default function HireLayout({ children }: { children: React.ReactNode }) 
       className={`hire-page ${anton.variable} ${barlow.variable} ${barlowCondensed.variable}`}
     >
       {children}
+      {/*
+        Doug, behind the hire counter. Same widget and same endpoint as the
+        marketing site — the server switches him into hire mode off the
+        page path, so there is one bot and one conversation, not two.
+
+        Two differences from the gardening pages, both deliberate:
+          * No auto-open. This page IS the booking flow; a panel that
+            covers the calendar unasked gets closed, not read.
+          * A greeting that offers what he can actually do here.
+      */}
+      <Script
+        id="doug-widget-hire"
+        src="/embed.js"
+        strategy="lazyOnload"
+        data-endpoint="/api/enquiry"
+        data-logo="/images/Doug.png"
+        data-auto-open="false"
+        data-greeting={
+          "G'day — Doug here. Tell us what you're building and roughly when, " +
+          "and I'll tell you what gear suits, what it costs and whether it's free. " +
+          "I can fill the booking form in for you too."
+        }
+      />
     </div>
   );
 }

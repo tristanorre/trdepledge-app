@@ -267,7 +267,14 @@
     fetch(ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: conversation, capture: capture }),
+      // `page` tells the server which Doug to be: behind the hire counter
+      // on /hire, taking gardening enquiries everywhere else. Cosmetic and
+      // untrusted — both modes only reach read-only tools.
+      body: JSON.stringify({
+        messages: conversation,
+        capture: capture,
+        page: location.pathname,
+      }),
     })
       .then(function (res) {
         if (!res.ok) throw new Error("http_" + res.status);
@@ -280,6 +287,7 @@
           conversation.push({ role: "assistant", content: data.reply });
         }
         if (data && data.capture) capture = data.capture;
+        if (data && data.handoff) handoff(data.handoff);
       })
       .catch(function (err) {
         typingEl.remove();
@@ -308,6 +316,32 @@
 
   if (AUTO_OPEN) {
     setTimeout(open, 500);
+  }
+
+  // ── Hire handoff ─────────────────────────────────────────────
+  //
+  // On the hire page Doug can fill the booking form in with the tool and
+  // dates he's just agreed, so the customer isn't made to pick them twice.
+  // The widget lives in a shadow root and knows nothing about the page, so
+  // it dispatches an event and lets the page act on it.
+  //
+  // This does NOT book anything. The customer still types their own name,
+  // mobile and email, and presses "Send booking request" themselves.
+  var HANDOFF_EVENT = "doug:hire-prefill";
+
+  function handoff(detail) {
+    try {
+      window.dispatchEvent(new CustomEvent(HANDOFF_EVENT, { detail: detail }));
+    } catch (e) {
+      // A browser without CustomEvent, or a page with no listener — the
+      // chat still told them the dates, so this is a lost convenience,
+      // not a lost booking. Never let it break the conversation.
+      console.warn("[Doug widget] handoff not delivered", e);
+      return;
+    }
+    // Get out of the way: on a phone the panel is full-screen, so the form
+    // we've just scrolled to would be behind it.
+    if (window.matchMedia && window.matchMedia("(max-width: 480px)").matches) close();
   }
 
   // ── Utilities ────────────────────────────────────────────────

@@ -138,6 +138,37 @@ Both ship from one Vercel deploy on different subdomains.
 - `HIRE_NOTIFY_MOBILE` picks the recipient, mirroring `ENQUIRY_NOTIFY_EMAIL`.
   Unset, it falls back to the flyer number.
 
+### Doug on the hire page
+
+- **One bot, two modes.** The widget and `/api/enquiry` are shared with the
+  marketing site; the browser sends `page` and the server picks the prompt
+  (`dougSystemPrompt` in `src/lib/hire/doug.ts`). On `/hire` an appended
+  section explicitly overrides the eleven-field intake — nobody hiring a mixer
+  wants to be asked their postcode. Everywhere else the intake is untouched and
+  gains only a short note that a hire desk exists. Both modes can switch to the
+  other when the visitor clearly wants it. **Add to the persona, never replace
+  it** — `dougSystemPrompt` takes the base prompt as an argument.
+- **No figure reaches Doug except through a tool call.** The prompt contains no
+  rate, bond, date or policy sentence, and `unit/hire-doug.spec.ts` fails the
+  build if one appears — including in an innocent-looking format example. Tool
+  results carry *pre-rendered strings* (`"$160"`, `"Fri, 7 Aug"`) rather than
+  cents and day counts, because a model handed ingredients will do the
+  arithmetic itself. That's the whole reason the formatters exist.
+- **There is no `create_booking` tool, and there must never be one.** Doug can
+  look things up and call `prefill_booking_form`, which fills the form in and
+  scrolls to it. The customer still types their own details and presses the
+  button, so every reservation goes through `/api/hire/bookings`, which
+  re-prices and re-checks. The widget can't touch the page directly (shadow
+  DOM), so the handoff travels as a `doug:hire-prefill` CustomEvent that
+  `HireApp` listens for — and re-checks the range before accepting.
+- `doug-tools.ts` reads only the PII-free path and published-only equipment.
+  A conversation with one customer physically cannot surface another's details
+  because the columns are never selected. Keep it that way.
+- Tool failures return a *result Doug can read out*, never a thrown error — a
+  mistyped slug should get a recovery, not "Doug's on smoko". `hire_policy` and
+  the not-on-the-hire-page refusal both answer with the database down, since
+  neither needs a row.
+
 ## Code patterns
 
 ### API auth
