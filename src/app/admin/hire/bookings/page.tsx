@@ -171,7 +171,7 @@ function BookingCard({ r, today: now }: { r: AdminReservation; today: string }) 
         </p>
       )}
 
-      <BookingActions reservationId={r.id} status={r.status} />
+      <BookingActions reservationId={r.id} status={r.status} bondWaived={r.bondWaived} />
     </div>
   );
 }

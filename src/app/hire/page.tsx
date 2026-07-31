@@ -39,6 +39,11 @@ export default async function HirePage() {
     ? await loadHireCatalogue(supabase)
     : { today: today(), horizon: today(), entries: [] };
 
+  // An unreachable database and an empty yard both render zero cards. The
+  // page has to say which, or the offline case reads as "Thomas owns no
+  // tools" — see the empty state in HireApp.
+  const catalogueLoaded = supabase !== null;
+
   return (
     <>
       <header className="bar">
@@ -148,6 +153,7 @@ export default async function HirePage() {
           today={catalogue.today}
           horizon={catalogue.horizon}
           entries={catalogue.entries}
+          catalogueLoaded={catalogueLoaded}
         />
 
         <section className="terms" id="rules">

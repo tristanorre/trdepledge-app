@@ -21,14 +21,18 @@
  * it while it's still being finished. The page stays reachable by URL — this
  * is not access control, just a request to crawlers not to advertise it.
  *
- * It is off because two things aren't ready yet:
- *   1. Every bond figure on the page is a placeholder (see BONDS_CONFIRMED).
- *      The page states them as fact.
- *   2. Nothing notifies Thomas when a request arrives (phase 6). A booking
- *      would sit in the table unseen.
+ * The original two blockers are now down to one:
+ *   1. ~~Bond figures were placeholders~~ — settled at $100 (migration 0035).
+ *   2. Thomas gets a text when a request arrives, but only if
+ *      HIRE_NOTIFY_MOBILE is set in production. Unset, it falls back to the
+ *      flyer number, which is probably right — "probably" being the reason
+ *      this is still a checklist item.
  *
- * FLIP THIS TO `true` AT LAUNCH, once bonds are confirmed and the booking
- * SMS is wired. It's the last item on the pre-launch checklist.
+ * The lawn mower's daily rate is also still unconfirmed
+ * (UNCONFIRMED_RATE_SLUGS), and the page states it as fact.
+ *
+ * FLIP THIS TO `true` AT LAUNCH. It also turns the home page hero tile from
+ * a COMING SOON teaser into a live link, so one switch opens both doors.
  */
 export const HIRE_PUBLIC_LAUNCH = false;
 
@@ -84,13 +88,19 @@ export type BlockReason = (typeof BLOCK_REASONS)[number];
 // ─────────────────────────────────────────────────────────────────────
 
 /**
- * Bond per item. // UNCONFIRMED — every bond figure was invented.
+ * Bond per item. CONFIRMED — Thomas set one figure for the whole floor:
+ * $100, migration 0035.
  *
- * The live values are the `bond` column on `equipment`; this flag exists so
- * the UI and Doug can caveat them ("bond is indicative, confirm with
- * Thomas") until they're signed off. Flip to `true` once Thomas confirms.
+ * The live values are still the `bond` column on `equipment`, so a future
+ * per-item bond needs no code change. This flag stays because it's what
+ * the UI and Doug read to decide whether to caveat the figure; now that
+ * it's true, they state it plainly.
+ *
+ * Note this is the bond as ADVERTISED. Thomas can waive it on any
+ * individual hire from the admin console — see `bond_waived` — and that
+ * is deliberately not published anywhere a customer can read it.
  */
-export const BONDS_CONFIRMED = false;
+export const BONDS_CONFIRMED = true;
 
 /**
  * Lawn mower daily rate. // UNCONFIRMED — $40 was invented.
@@ -158,7 +168,6 @@ export const HIRE_POLICY: Record<PolicyTopic, PolicyEntry> = {
       "The bond is taken at pickup and refunded once the tool is back, clean and undamaged. " +
       "Hire fees are payable at pickup by card or cash. Nothing is charged when you send a " +
       "booking request.",
-    unconfirmed: true, // bond amounts themselves are unconfirmed
   },
   duration: {
     title: "How the day is counted",

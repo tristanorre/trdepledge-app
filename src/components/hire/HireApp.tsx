@@ -55,11 +55,20 @@ type Props = {
   /** Furthest date holds were loaded for — bounds how far the calendar pages. */
   horizon: ISODate;
   entries: HireEntry[];
+  /**
+   * False when the server couldn't reach the database at all.
+   *
+   * Distinct from "no items", which looks identical on screen and is a
+   * completely different problem. Without this the offline case reads as
+   * an empty yard, and the only way to tell them apart is to go and query
+   * the database by hand — which is exactly what happened once.
+   */
+  catalogueLoaded?: boolean;
 };
 
 const ALL = "All";
 
-export default function HireApp({ today, horizon, entries }: Props) {
+export default function HireApp({ today, horizon, entries, catalogueLoaded = true }: Props) {
   const [filter, setFilter] = useState<string>(ALL);
   const [slug, setSlug] = useState<string>(entries[0]?.equipment.slug ?? "");
   const [start, setStart] = useState<ISODate | null>(null);
@@ -216,13 +225,29 @@ export default function HireApp({ today, horizon, entries }: Props) {
         <div className="wrap">
           <p className="eyebrow">The yard</p>
           <h2>What&rsquo;s on the floor</h2>
+          {/* Two different failures that look the same to a visitor. Both
+              send them to the phone, because that always works — but the
+              wording has to tell us apart which one we're looking at. */}
           <div className="empty" style={{ marginTop: 22 }}>
-            <b>Nothing on the floor just yet</b>
-            <p style={{ margin: 0 }}>
-              The gear is being listed. Give Thomas a call on{" "}
-              <a href={`tel:${HIRE_PHONE_TEL}`}>{HIRE_PHONE}</a> and he&rsquo;ll tell you
-              what&rsquo;s available.
-            </p>
+            {catalogueLoaded ? (
+              <>
+                <b>Nothing on the floor just yet</b>
+                <p style={{ margin: 0 }}>
+                  The gear is being listed. Give Thomas a call on{" "}
+                  <a href={`tel:${HIRE_PHONE_TEL}`}>{HIRE_PHONE}</a> and he&rsquo;ll tell you
+                  what&rsquo;s available.
+                </p>
+              </>
+            ) : (
+              <>
+                <b>Can&rsquo;t load the yard right now</b>
+                <p style={{ margin: 0 }}>
+                  The gear list isn&rsquo;t loading — it&rsquo;s us, not you. Give Thomas a call
+                  on <a href={`tel:${HIRE_PHONE_TEL}`}>{HIRE_PHONE}</a> and he&rsquo;ll sort you
+                  out.
+                </p>
+              </>
+            )}
           </div>
         </div>
       </section>

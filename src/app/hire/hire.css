@@ -267,7 +267,11 @@
 }
 .hire-page .hero-grid {
   display: grid;
-  grid-template-columns: 1.18fr 0.82fr;
+  /* Was 1.18fr / 0.82fr, which left the badge a ~468px column it couldn't
+     fill without looking lost in it. Even columns give it real presence;
+     the headline still has room because Anton is condensed enough that
+     "YOURSELF." fits a 560px measure at the top of its clamp. */
+  grid-template-columns: 1fr 1fr;
   gap: clamp(16px, 3vw, 40px);
   align-items: end;
 }
@@ -307,11 +311,21 @@
 }
 .hire-page .hero-art {
   align-self: center;
-  justify-self: center;
+  /* NOT justify-self: center — that sizes the grid item to max-content, so
+     the img's `width: 100%` resolved to its own 460px and the max-width
+     below never came into play. Stretch to the column and centre the image
+     inside it instead. */
+  justify-self: stretch;
+  text-align: center;
 }
 .hire-page .hero-art img {
   width: 100%;
-  max-width: 380px;
+  /* The source is 460px wide, so anything past that is upscaling. A badge
+     with heavy outlines and a drop shadow carries it to about 1.2x before
+     the small type in the crest starts to soften — 560 is that limit, not
+     an arbitrary round number. Replace logo-hire.webp with a larger export
+     and this can go further. */
+  max-width: 560px;
   margin: 0 auto;
   filter: drop-shadow(0 14px 26px rgba(0, 0, 0, 0.6));
 }

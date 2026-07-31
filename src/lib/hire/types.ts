@@ -129,6 +129,23 @@ export type RangeRejection =
   | "ends-on-closed-day"
   | "crosses-held-day";
 
+/**
+ * What the customer actually hands over at the counter.
+ *
+ * The single place the bond waiver is applied. `bondTotalCents` always
+ * records what the bond would have been — waiving doesn't erase it, because
+ * "we let this one off $100" is worth knowing later — so every caller that
+ * shows or texts a total has to come through here rather than adding the
+ * two columns itself.
+ */
+export function amountDueAtPickup(booking: {
+  hireTotalCents: number;
+  bondTotalCents: number;
+  bondWaived: boolean;
+}): number {
+  return booking.hireTotalCents + (booking.bondWaived ? 0 : booking.bondTotalCents);
+}
+
 /** Parse a numeric(10,2) string from Postgres into integer cents. */
 export function toCents(dbAmount: string | number | null | undefined): number {
   if (dbAmount == null) return 0;

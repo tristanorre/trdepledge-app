@@ -140,10 +140,11 @@ test.describe("what comes back from a tool call", () => {
   });
 
   test("unconfirmed figures are flagged so Doug caveats them", () => {
-    // Every bond in the system is still a placeholder.
-    expect(brief.bondUnconfirmed).toBe(true);
+    // The lawn mower's rate is still invented; the bonds were settled at
+    // $100. The flag has to distinguish them, not just always fire.
     expect(briefFor({ ...MIXER, slug: "lawn-mower" }, null).rateUnconfirmed).toBe(true);
     expect(brief.rateUnconfirmed).toBe(false);
+    expect(brief.bondUnconfirmed).toBe(false);
   });
 
   test("a quote states the total and forbids recalculating it", () => {
@@ -225,8 +226,13 @@ test.describe("what comes back from a tool call", () => {
   test("policy answers come straight from config, unconfirmed flag and all", () => {
     const bond = formatPolicy("bond");
     expect(bond.body).toBe(HIRE_POLICY.bond.body);
-    expect(bond.unconfirmed).toBe(true);
-    expect(String(bond.note)).toMatch(/indicative/i);
+    expect(bond.unconfirmed).toBe(false);
+
+    // Delivery is still unquantified, so it carries the caveat — proving
+    // the flag tracks config rather than being wired on or off.
+    const delivery = formatPolicy("delivery");
+    expect(delivery.unconfirmed).toBe(true);
+    expect(String(delivery.note)).toMatch(/indicative/i);
     expect(formatPolicy("fuel").unconfirmed).toBe(false);
   });
 });

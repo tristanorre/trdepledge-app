@@ -162,7 +162,7 @@ function BookingRow({
         <HireStatusPill status={r.status} />
       </div>
 
-      {showActions && <BookingActions reservationId={r.id} status={r.status} compact />}
+      {showActions && <BookingActions reservationId={r.id} status={r.status} bondWaived={r.bondWaived} compact />}
     </div>
   );
 }
