@@ -996,6 +996,114 @@
   margin-bottom: 16px;
 }
 
+/* ---------- booking form ---------- */
+.hire-page .form-card,
+.hire-page .done-card {
+  margin-top: 22px;
+}
+.hire-page .form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.hire-page .form-grid .full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 600px) {
+  .hire-page .form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.hire-page textarea {
+  resize: vertical;
+  min-height: 84px;
+}
+.hire-page .tick {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.hire-page .tick input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  accent-color: var(--lime);
+  margin-top: 2px;
+}
+.hire-page .tick label {
+  color: #d8d8d2;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+  font-family: var(--font-barlow), sans-serif;
+  font-size: 0.94rem;
+  margin: 0;
+}
+.hire-page .opt {
+  color: var(--muted);
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 400;
+  font-family: var(--font-barlow), sans-serif;
+}
+.hire-page .err {
+  color: #f09b90;
+  font-size: 0.88rem;
+  margin: 0 0 10px;
+  display: none;
+}
+.hire-page .err.on {
+  display: block;
+}
+
+/* Honeypot. Off-screen rather than display:none — some bots skip hidden
+   inputs, but a positioned one still looks fillable to them. aria-hidden
+   and tabindex=-1 keep it away from real people and screen readers. */
+.hire-page .hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ---------- confirmation ---------- */
+.hire-page .done {
+  background: #1b2a12;
+  border: 2px solid var(--lime-dim);
+  border-radius: var(--r);
+  padding: 24px;
+}
+.hire-page .done h3 {
+  color: var(--lime);
+  font-size: 1.5rem;
+  margin-bottom: 8px;
+}
+/* Scoped to its own class rather than `.done > p`: an element-qualified
+   descendant selector (0,2,1) would outrank `.ref` and `.done-foot` (0,2,0)
+   and repaint both of them this grey. */
+.hire-page .done-intro {
+  margin: 0 0 16px;
+  color: #d8d8d2;
+}
+.hire-page .ref {
+  font-family: var(--font-anton), sans-serif;
+  font-size: 1.6rem;
+  color: var(--amber);
+  letter-spacing: 0.06em;
+  margin: 2px 0 0;
+}
+.hire-page .done-lines {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.hire-page .done-foot {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* flyer viewer */
 .hire-page .lb {
   position: fixed;

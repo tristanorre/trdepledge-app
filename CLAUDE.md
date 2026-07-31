@@ -91,6 +91,17 @@ Both ship from one Vercel deploy on different subdomains.
 - `select("*")` is banned on `reservations`. Column lists are explicit because
   Doug's tools run through the same read path, and customer names/phones/emails
   must never reach a conversation with a different customer.
+- **The booking endpoint never reads a total from the client** — it doesn't even
+  send one. `/api/hire/bookings` re-looks-up the equipment (published-only),
+  re-checks the range through the engine, and re-prices with `quoteHire`. The
+  browser supplies dates and contact details, nothing that costs money.
+- Booking validation lives in `src/lib/hire/booking.ts` and is imported by
+  *both* the form and the route, so the two can't disagree about what a valid
+  mobile is. The browser's pass is for speed; the server's is the real one.
+- A `23P01` from the insert is the expected outcome of two customers racing for
+  the same dates, not a bug. Handle it as a 409 with a next step. Only `23505`
+  (a reference collision) is worth retrying — retrying an overlap would be
+  wrong, the dates really did go.
 
 ## Code patterns
 

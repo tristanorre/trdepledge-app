@@ -34,6 +34,7 @@ import {
   fmtHireMoney,
   monthCalendar,
   startOfMonth,
+  validateBooking,
   type AvailabilityContext,
   type Equipment,
   type Hold,
@@ -66,6 +67,8 @@ export default function HireApp({ today, horizon, entries }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const bookingRef = useRef<HTMLElement | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const categories = useMemo(
     () => [ALL, ...Array.from(new Set(entries.map((e) => e.equipment.category)))],
@@ -386,18 +389,32 @@ export default function HireApp({ today, horizon, entries }: Props) {
               </div>
               <small>Bond is refunded when the tool comes back clean and undamaged.</small>
 
-              {/* Phase 4 replaces this with the booking form. Until the form
-                  exists, the page says plainly how to actually book rather
-                  than showing a button that does nothing. */}
-              <div className="notice">
-                Online booking is opening shortly. To lock these dates in now, call Thomas on{" "}
-                <a href={`tel:${HIRE_PHONE_TEL}`}>{HIRE_PHONE}</a>.
-              </div>
-              <a className="btn wide" href={`tel:${HIRE_PHONE_TEL}`}>
-                Call to book
-              </a>
+              <button
+                type="button"
+                className="btn wide"
+                disabled={!start || !end}
+                onClick={() => {
+                  formRef.current?.scrollIntoView({ block: "center" });
+                  nameRef.current?.focus();
+                }}
+              >
+                Continue to details
+              </button>
             </div>
           </div>
+
+          <BookingForm
+            formRef={formRef}
+            nameRef={nameRef}
+            equipment={selected.equipment}
+            startsOn={start}
+            endsOn={end}
+            quote={{ days, hireCents, bondCents, totalCents }}
+            onBooked={() => {
+              setStart(null);
+              setEnd(null);
+            }}
+          />
         </div>
       </section>
 
@@ -514,6 +531,264 @@ function KitCard({
     </article>
   );
 }
+
+/**
+ * The booking request form.
+ *
+ * Validation runs through `validateBooking` from @/lib/hire — the same
+ * module the API route uses — so the browser and the server can't disagree
+ * about what a valid mobile is, and the customer sees the same wording
+ * either way. The server validates again regardless; this pass exists to
+ * answer instantly, not to be trusted.
+ *
+ * Sending creates a PENDING request. It is not a confirmed booking, and the
+ * copy is careful about that distinction.
+ */
+function BookingForm({
+  formRef,
+  nameRef,
+  equipment,
+  startsOn,
+  endsOn,
+  quote,
+  onBooked,
+}: {
+  formRef: React.RefObject<HTMLDivElement>;
+  nameRef: React.RefObject<HTMLInputElement>;
+  equipment: Equipment;
+  startsOn: ISODate | null;
+  endsOn: ISODate | null;
+  quote: { days: number; hireCents: number; bondCents: number; totalCents: number };
+  onBooked: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [jobNotes, setJobNotes] = useState("");
+  const [accepted, setAccepted] = useState(false);
+  const [website, setWebsite] = useState(""); // honeypot — real people leave this empty
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [done, setDone] = useState<BookingConfirmation | null>(null);
+
+  if (done) {
+    return (
+      <div className="card done-card" ref={formRef}>
+        <div className="done">
+          <h3>Booking request sent</h3>
+          <p className="done-intro">
+            Thanks {done.firstName}. Your dates are held while Thomas confirms — you&rsquo;ll get
+            a text on {done.phone}, usually the same day.
+          </p>
+          <p className="eyebrow">Your reference</p>
+          <p className="ref">{done.reference}</p>
+          <div className="done-lines">
+            <div className="dock-line">
+              <span>Tool</span>
+              <b>{done.equipmentName}</b>
+            </div>
+            <div className="dock-line">
+              <span>Collect</span>
+              <b>{fmtHireDate(done.startsOn)}</b>
+            </div>
+            <div className="dock-line">
+              <span>Return by</span>
+              <b>{fmtHireDate(done.endsOn)}</b>
+            </div>
+            <div className="dock-line">
+              <span>Due at pickup</span>
+              <b>{fmtHireMoney(done.totalDueAtPickupCents)}</b>
+            </div>
+          </div>
+          <p className="done-foot">
+            Need to change something? Call <a href={`tel:${HIRE_PHONE_TEL}`}>{HIRE_PHONE}</a>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    setError(null);
+
+    const check = validateBooking({
+      slug: equipment.slug,
+      startsOn: startsOn ?? "",
+      endsOn: endsOn ?? "",
+      name,
+      phone,
+      email,
+      jobNotes,
+      acceptedTerms: accepted,
+    });
+    if (!check.ok) {
+      setError(check.message);
+      return;
+    }
+
+    setSending(true);
+    try {
+      const res = await fetch("/api/hire/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: equipment.slug,
+          startsOn,
+          endsOn,
+          name,
+          phone,
+          email,
+          jobNotes,
+          acceptedTerms: accepted,
+          website,
+          // Note: no total is sent. The server prices from the equipment
+          // row, so there is nothing here worth tampering with.
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(
+          data?.error ??
+            `That didn't send. Try again, or call Thomas on ${HIRE_PHONE}.`,
+        );
+        return;
+      }
+
+      setDone({
+        reference: data.reference,
+        firstName: name.trim().split(/\s+/)[0],
+        phone: phone.trim(),
+        equipmentName: data.equipment?.name ?? equipment.name,
+        startsOn: data.startsOn,
+        endsOn: data.endsOn,
+        totalDueAtPickupCents: data.totalDueAtPickupCents,
+      });
+      onBooked();
+    } catch {
+      setError(`That didn't send — check your connection, or call Thomas on ${HIRE_PHONE}.`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const ready = !!startsOn && !!endsOn;
+
+  return (
+    <div className="card form-card" ref={formRef}>
+      <h3>Your details</h3>
+      <p className="hint">
+        Sending this holds the dates while Thomas confirms. No payment is taken here.
+      </p>
+
+      <div className="notice">
+        {ready ? (
+          <>
+            <b>{equipment.name}</b> — collect {fmtHireDate(startsOn!)}, return{" "}
+            {fmtHireDate(endsOn!)}. {quote.days} day{quote.days > 1 ? "s" : ""} at{" "}
+            {fmtHireMoney(equipment.dailyRateCents)} plus {fmtHireMoney(quote.bondCents)} bond ={" "}
+            <b>{fmtHireMoney(quote.totalCents)}</b> at pickup.
+          </>
+        ) : (
+          "Choose a tool and dates above and they'll show up here."
+        )}
+      </div>
+
+      <div className="form-grid">
+        <div>
+          <label htmlFor="fname">Name</label>
+          <input
+            id="fname"
+            ref={nameRef}
+            autoComplete="name"
+            placeholder="Jane Citizen"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="fphone">Mobile</label>
+          <input
+            id="fphone"
+            type="tel"
+            autoComplete="tel"
+            placeholder="0400 000 000"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
+        <div className="full">
+          <label htmlFor="femail">Email</label>
+          <input
+            id="femail"
+            type="email"
+            autoComplete="email"
+            placeholder="jane@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </div>
+        <div className="full">
+          <label htmlFor="fjob">
+            What are you using it for?{" "}
+            <span className="opt">(optional — helps us send the right attachment)</span>
+          </label>
+          <textarea
+            id="fjob"
+            placeholder="Laying pavers down the side of the house, about 12m."
+            value={jobNotes}
+            onChange={(e) => setJobNotes(e.target.value)}
+          />
+        </div>
+
+        {/* Honeypot. Hidden from people and from screen readers; bots fill it. */}
+        <div className="hp" aria-hidden="true">
+          <label htmlFor="website">Website</label>
+          <input
+            id="website"
+            name="website"
+            tabIndex={-1}
+            autoComplete="off"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
+        </div>
+
+        <div className="full tick">
+          <input
+            type="checkbox"
+            id="fok"
+            checked={accepted}
+            onChange={(e) => setAccepted(e.target.checked)}
+          />
+          <label htmlFor="fok">
+            I&rsquo;m 18 or over, I&rsquo;ll bring photo ID, and I&rsquo;ve read the hire terms
+            below.
+          </label>
+        </div>
+
+        <div className="full">
+          <p className={error ? "err on" : "err"} role="alert">
+            {error}
+          </p>
+          <button type="button" className="btn wide" onClick={submit} disabled={sending}>
+            {sending ? "Sending…" : "Send booking request"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type BookingConfirmation = {
+  reference: string;
+  firstName: string;
+  phone: string;
+  equipmentName: string;
+  startsOn: ISODate;
+  endsOn: ISODate;
+  totalDueAtPickupCents: number;
+};
 
 /** Flyer spec sheet. Escape and backdrop close; focus is trapped to the close button. */
 function FlyerLightbox({ entry, onClose }: { entry: HireEntry; onClose: () => void }) {

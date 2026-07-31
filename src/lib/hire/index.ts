@@ -20,6 +20,7 @@ export * from "./types";
 export * from "./dates";
 export * from "./charging";
 export * from "./availability";
+export * from "./booking";
 export {
   HIRE_PHONE,
   HIRE_PHONE_TEL,
