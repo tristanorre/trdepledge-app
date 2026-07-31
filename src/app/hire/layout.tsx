@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Anton, Barlow, Barlow_Condensed } from "next/font/google";
 
+import { HIRE_PUBLIC_LAUNCH } from "@/lib/hire";
 import "./hire.css";
 
 // The hire page has its own typography — Anton for the condensed display
@@ -36,6 +37,12 @@ export const metadata: Metadata = {
     "wacker packer, lawn roller and mower — by the day, collected from Wallaroo SA. " +
     "Check live availability and book online.",
   alternates: { canonical: "/hire" },
+  // Kept out of search results until launch — the bonds shown on the page
+  // are still placeholders and nothing texts Thomas when a request lands.
+  // Driven by one flag in src/lib/hire/config.ts; flip it there, not here.
+  robots: HIRE_PUBLIC_LAUNCH
+    ? undefined
+    : { index: false, follow: false, nocache: true },
   openGraph: {
     title: "DIY Tool Hire — Wallaroo SA | T.R. Depledge",
     description:
