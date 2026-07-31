@@ -83,6 +83,16 @@ export const BONDS_CONFIRMED = false;
 export const UNCONFIRMED_RATE_SLUGS: readonly string[] = ["lawn-mower"];
 
 /**
+ * Items whose photo is a cut-out rather than a product shot, and so render
+ * contained-with-a-shadow instead of cropped to fill the card.
+ *
+ * // UNCONFIRMED — the lawn mower's image is cropped out of a Thomas
+ * cartoon. It's the only non-photographic item and it shows. Remove the
+ * slug from this list once Thomas supplies a real photo.
+ */
+export const CUTOUT_PHOTO_SLUGS: readonly string[] = ["lawn-mower"];
+
+/**
  * Delivery fee and radius. // UNCONFIRMED — referenced in copy, never quantified.
  * Deliberately not modelled as a price: delivery stays phone-only until
  * Thomas gives a figure. Do not build a delivery flow off this.

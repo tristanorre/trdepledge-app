@@ -17,7 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { HOLDING_STATUSES, toCents, type AvailabilityContext, type Equipment, type Hold } from "./types";
-import { today, type ISODate } from "./dates";
+import { addMonths, today, type ISODate } from "./dates";
 import { nextFreeDate } from "./availability";
 
 /** Columns safe to read for the catalogue. No PII lives on `equipment`. */
@@ -193,6 +193,82 @@ export async function listPublishedEquipmentWithAvailability(
       nextFree: nextFreeDate(await availabilityContextFor(supabase, equipment)),
     })),
   );
+}
+
+/** One catalogue item, with everything the page needs to draw it. */
+export type HireCatalogueEntry = {
+  equipment: Equipment;
+  /** Holds inside the loaded window. Dates only — no customer details. */
+  holds: Hold[];
+  nextFree: ISODate | null;
+};
+
+/**
+ * The whole public catalogue in two queries, whatever the item count.
+ *
+ * `listPublishedEquipmentWithAvailability` above runs one holds query per
+ * item, which is fine for a handful of tools but is an N+1. This fetches
+ * every hold for every published item at once and groups in memory — the
+ * page renders on each request, so it's worth the difference.
+ *
+ * `monthsAhead` bounds the window. The calendar lets a customer page
+ * forward that far and no further, so loading beyond it would be wasted;
+ * loading less would draw empty months that are actually booked.
+ */
+export async function loadHireCatalogue(
+  supabase: SupabaseClient,
+  monthsAhead = 12,
+): Promise<{ today: ISODate; horizon: ISODate; entries: HireCatalogueEntry[] }> {
+  const from = today();
+  const horizon = addMonths(from, monthsAhead);
+
+  const equipment = await listPublishedEquipment(supabase);
+  if (equipment.length === 0) return { today: from, horizon, entries: [] };
+
+  const { data, error } = await supabase
+    .from("reservations")
+    // equipment_id is needed to group; it identifies a tool, not a person.
+    .select(`equipment_id, ${HOLD_COLUMNS}`)
+    .in(
+      "equipment_id",
+      equipment.map((e) => e.id),
+    )
+    .in("status", HOLDING_STATUSES as unknown as string[])
+    .lte("starts_on", horizon)
+    .gte("ends_on", from);
+
+  if (error) throw error;
+
+  const now = Date.now();
+  const byEquipment = new Map<string, Hold[]>();
+  for (const r of (data ?? []) as Array<{
+    equipment_id: string;
+    starts_on: string;
+    ends_on: string;
+    kind: Hold["kind"];
+    status: string;
+    expires_at: string | null;
+  }>) {
+    // Same expiry rule as listHolds — a pending request past its 24 hours
+    // stops holding dates immediately rather than waiting for the sweep.
+    if (r.status === "pending" && r.expires_at && new Date(r.expires_at).getTime() <= now) continue;
+    const list = byEquipment.get(r.equipment_id) ?? [];
+    list.push({ startsOn: r.starts_on, endsOn: r.ends_on, kind: r.kind });
+    byEquipment.set(r.equipment_id, list);
+  }
+
+  return {
+    today: from,
+    horizon,
+    entries: equipment.map((eq) => {
+      const holds = byEquipment.get(eq.id) ?? [];
+      return {
+        equipment: eq,
+        holds,
+        nextFree: nextFreeDate({ today: from, holds, changeoverDays: eq.changeoverDays }),
+      };
+    }),
+  };
 }
 
 /**

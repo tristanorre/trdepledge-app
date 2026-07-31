@@ -98,6 +98,61 @@ export function endOfMonth(iso: ISODate): ISODate {
   return toISO(Date.UTC(y, m, 0) / MS_PER_DAY);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Display formatting.
+//
+// These deliberately do NOT reuse `fmtDayShort` / `fmtDayLong` from
+// src/lib/dates.ts. Those build a Date at noon in the *viewer's* local zone
+// and then format it in Adelaide — fine for staff in South Australia, but
+// the hire page is public. For a visitor in, say, UTC-8, local noon lands
+// on the following Adelaide day and every date on the page reads one day
+// late.
+//
+// A hire date has no time-of-day component, so we anchor it at UTC midnight
+// and format in UTC. The string then depends only on the ISO value, which
+// is what a calendar date should mean.
+// ─────────────────────────────────────────────────────────────────────
+
+function asUTCDate(iso: ISODate): Date {
+  return new Date(toEpochDay(iso) * MS_PER_DAY);
+}
+
+const shortFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeZone: "UTC",
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+});
+
+const longFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeZone: "UTC",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+const monthFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeZone: "UTC",
+  month: "long",
+  year: "numeric",
+});
+
+/** "Mon 3 Aug" — the calendar and summary lines. */
+export function fmtHireDate(iso: ISODate): string {
+  return shortFormatter.format(asUTCDate(iso));
+}
+
+/** "Monday, 3 August 2026" — screen-reader labels on calendar days. */
+export function fmtHireDateLong(iso: ISODate): string {
+  return longFormatter.format(asUTCDate(iso));
+}
+
+/** "August 2026" — the calendar heading. */
+export function fmtHireMonth(iso: ISODate): string {
+  return monthFormatter.format(asUTCDate(iso));
+}
+
 /** Shift by whole months, clamping to the last valid day (31 Jan +1 → 28/29 Feb). */
 export function addMonths(iso: ISODate, n: number): ISODate {
   const [y, m, d] = iso.split("-").map(Number);

@@ -7,12 +7,19 @@
 //   Pure rules  → ./availability, ./charging   (no database, no clock)
 //   Data access → ./repo                        (Supabase, service role)
 //   Constants   → ./config                      (incl. UNCONFIRMED figures)
+//
+// NOTE — `./repo` is deliberately NOT re-exported here. It imports the
+// Supabase client, and this barrel is imported by client components (the
+// calendar evaluates the same pure rules in the browser). Re-exporting it
+// would drag @supabase/supabase-js into the browser bundle for no reason.
+// Server code imports it explicitly:
+//
+//   import { loadHireCatalogue } from "@/lib/hire/repo";
 
 export * from "./types";
 export * from "./dates";
 export * from "./charging";
 export * from "./availability";
-export * from "./repo";
 export {
   HIRE_PHONE,
   HIRE_PHONE_TEL,
@@ -24,6 +31,7 @@ export {
   BLOCK_REASONS,
   BONDS_CONFIRMED,
   UNCONFIRMED_RATE_SLUGS,
+  CUTOUT_PHOTO_SLUGS,
   DELIVERY_FEE_CENTS,
   LATE_RETURN_CHARGE,
   HIRE_POLICY,
