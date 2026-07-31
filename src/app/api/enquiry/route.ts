@@ -14,6 +14,8 @@ import {
   MAX_MESSAGES, MAX_MESSAGE_CHARS, MAX_BODY_BYTES, RATE_LIMIT_PER_MINUTE,
   type CapturedEnquiry,
 } from "@/lib/doug";
+import { HIRE_TOOLS, dougSystemPrompt, isHirePagePath, isHireToolName } from "@/lib/hire/doug";
+import { runHireTool, type HireHandoff } from "@/lib/hire/doug-tools";
 
 const APP_BASE_URL = process.env.NEXT_PUBLIC_APP_URL
   ?? "https://trdepledgegardeningandmaintenance.com";
@@ -129,6 +131,7 @@ export async function POST(req: Request) {
   let body: {
     messages?: unknown;
     capture?: unknown;
+    page?: unknown;
   };
   try { body = await req.json(); }
   catch { return jsonError(400, "Invalid JSON", cors); }
@@ -136,6 +139,13 @@ export async function POST(req: Request) {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const prevCapture: CapturedEnquiry = (body.capture && typeof body.capture === "object")
     ? (body.capture as CapturedEnquiry) : {};
+
+  // Which page the visitor is reading. Doug behaves differently behind the
+  // hire counter than he does on the gardening site — see dougSystemPrompt.
+  // Untrusted and cosmetic: the worst a forged value can do is put him in
+  // the wrong mode, and both modes only reach read-only tools.
+  const page = typeof body.page === "string" ? body.page.slice(0, 300) : "";
+  const onHirePage = isHirePagePath(page);
 
   if (messages.length === 0) return jsonError(400, "messages required", cors);
   if (messages.length > MAX_MESSAGES) return jsonError(400, `Too many messages (>${MAX_MESSAGES})`, cors);
@@ -182,7 +192,17 @@ export async function POST(req: Request) {
   let reply = "";
   let newCapture: CapturedEnquiry = { ...prevCapture };
   let toolCalledThisTurn = false;
-  const MAX_TOOL_ROUNDS = 4;
+  // Set when Doug fills the hire booking form in for the visitor. Returned
+  // to the widget, which dispatches it to the page — it selects the tool
+  // and dates. It is NOT a booking: the customer still submits the form.
+  let handoff: HireHandoff | null = null;
+
+  // Six rather than four: a hire answer legitimately chains list_equipment
+  // → check_availability → quote_hire → prefill_booking_form, and cutting
+  // it short would leave the visitor with a quote and no form.
+  const MAX_TOOL_ROUNDS = 6;
+
+  const system = dougSystemPrompt(DOUG_SYSTEM_PROMPT, { onHirePage });
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -191,8 +211,12 @@ export async function POST(req: Request) {
       const modelResp: AnthropicMessage = await client.messages.create({
         model: DOUG_MODEL,
         max_tokens: DOUG_MAX_TOKENS,
-        system: DOUG_SYSTEM_PROMPT,
-        tools: [CAPTURE_ENQUIRY_TOOL],
+        system,
+        // The hire tools are offered on every page. They're read-only and
+        // the prompt decides whether he should be reaching for them — a
+        // visitor on /contact who asks "do you hire out a mixer?" deserves
+        // a real answer rather than a guess.
+        tools: [CAPTURE_ENQUIRY_TOOL, ...HIRE_TOOLS],
         messages: conversation,
       });
 
@@ -222,15 +246,32 @@ export async function POST(req: Request) {
       // complete. Bail out with whatever `reply` currently holds.
       if (modelResp.stop_reason !== "tool_use" || toolUses.length === 0) break;
 
-      // Model called a tool and wants the result back. Feed a
-      // synthetic {ok:true} so it can produce its next reply — the
-      // one with the actual next question.
+      // Model called a tool and wants the result back.
+      //
+      // capture_enquiry is a write into our own state, so a synthetic
+      // {ok:true} is the whole answer. The hire tools genuinely look
+      // something up — that result is the only place Doug is allowed to
+      // get a rate, a bond or a date from, so it has to be real.
       conversation.push({ role: "assistant", content: modelResp.content });
-      const toolResults: ToolResultBlockParam[] = toolUses.map((tu) => ({
-        type: "tool_result",
-        tool_use_id: tu.id,
-        content: JSON.stringify({ ok: true }),
-      }));
+      const toolResults: ToolResultBlockParam[] = await Promise.all(
+        toolUses.map(async (tu): Promise<ToolResultBlockParam> => {
+          if (!isHireToolName(tu.name)) {
+            return { type: "tool_result", tool_use_id: tu.id, content: JSON.stringify({ ok: true }) };
+          }
+          const outcome = await runHireTool(
+            getServiceClient(),
+            tu.name,
+            (tu.input ?? {}) as Record<string, unknown>,
+            { onHirePage },
+          );
+          if (outcome.handoff) handoff = outcome.handoff;
+          return {
+            type: "tool_result",
+            tool_use_id: tu.id,
+            content: JSON.stringify(outcome.result),
+          };
+        }),
+      );
       conversation.push({ role: "user", content: toolResults });
     }
   } catch (err) {
@@ -355,7 +396,14 @@ export async function POST(req: Request) {
   // fallback that DOESN'T falsely close the intake — instead, nudge
   // Doug to keep going by asking for whatever's still missing.
   if (!reply.trim()) {
-    if (missing.length > 0) {
+    if (onHirePage) {
+      // The intake nudge below would be nonsense here — nobody hiring a
+      // mixer is waiting to be asked for their postcode. Say nothing we'd
+      // have to walk back, and put the next move in their hands.
+      reply = handoff
+        ? "Righto — I've filled the form in below with those dates. Pop your name and number in and send it through."
+        : "Sorry, I lost my thread there. What were you after — and roughly when do you need it?";
+    } else if (missing.length > 0) {
       const nextField = HUMAN_FIELD_NAMES[missing[0]] ?? missing[0];
       reply = `Righto — got that. What's your ${nextField}?`;
     } else {
@@ -367,6 +415,10 @@ export async function POST(req: Request) {
     JSON.stringify({
       reply: reply.trim(),
       capture: newCapture,
+      // Present only when Doug filled the hire booking form in. The widget
+      // forwards it to the page as an event; the page selects the tool and
+      // the dates and scrolls the customer to the form.
+      ...(handoff ? { handoff } : {}),
       // `complete` is what the widget uses to decide whether to
       // still accept input. Only claim complete when the app-side
       // validation agrees.

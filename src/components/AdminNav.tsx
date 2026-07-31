@@ -24,6 +24,7 @@ const LINKS: Array<{ href: string; label: string }> = [
   { href: "/admin/clients",    label: "Clients" },
   { href: "/admin/costs",      label: "Costs" },
   { href: "/admin/photos",     label: "Photos" },
+  { href: "/admin/hire",       label: "Hire" },
 ];
 
 // A route is "active" when the current path either matches exactly, or

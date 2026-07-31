@@ -16,9 +16,18 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { HOLDING_STATUSES, toCents, type AvailabilityContext, type Equipment, type Hold } from "./types";
+import {
+  HOLDING_STATUSES,
+  toCents,
+  type AvailabilityContext,
+  type Equipment,
+  type Hold,
+  type ReservationKind,
+  type ReservationStatus,
+} from "./types";
 import { addMonths, today, type ISODate } from "./dates";
 import { nextFreeDate } from "./availability";
+import { OPEN_STATUSES } from "./workflow";
 
 /** Columns safe to read for the catalogue. No PII lives on `equipment`. */
 const EQUIPMENT_COLUMNS =
@@ -269,6 +278,227 @@ export async function loadHireCatalogue(
       };
     }),
   };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ADMIN READS
+//
+// Everything below returns customer details, and so must only ever be
+// reached from a route or page that has already run requireAdmin /
+// requireApiAdmin. Doug's tools and the public page use the PII-free
+// helpers above — do not swap one for the other to save a query.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Columns for the admin bookings views. Includes PII, unlike HOLD_COLUMNS. */
+const ADMIN_RESERVATION_COLUMNS =
+  "id, equipment_id, kind, status, starts_on, ends_on, reference, customer_name, " +
+  "customer_phone, customer_email, job_notes, charged_days, hire_total, bond_total, " +
+  "block_reason, created_at, expires_at";
+
+export type AdminReservation = {
+  id: string;
+  equipmentId: string;
+  equipmentName: string;
+  kind: ReservationKind;
+  status: ReservationStatus;
+  startsOn: ISODate;
+  endsOn: ISODate;
+  reference: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  jobNotes: string | null;
+  chargedDays: number | null;
+  hireTotalCents: number;
+  bondTotalCents: number;
+  blockReason: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+};
+
+type AdminReservationRow = {
+  id: string;
+  equipment_id: string;
+  kind: ReservationKind;
+  status: ReservationStatus;
+  starts_on: string;
+  ends_on: string;
+  reference: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  customer_email: string | null;
+  job_notes: string | null;
+  charged_days: number | null;
+  hire_total: string | number | null;
+  bond_total: string | number | null;
+  block_reason: string | null;
+  created_at: string;
+  expires_at: string | null;
+  equipment?: { name: string } | { name: string }[] | null;
+};
+
+function mapAdminReservation(row: AdminReservationRow): AdminReservation {
+  // PostgREST returns an embedded one-to-one as an object, but types it as
+  // possibly-an-array depending on how it infers the relationship.
+  const eq = Array.isArray(row.equipment) ? row.equipment[0] : row.equipment;
+  return {
+    id: row.id,
+    equipmentId: row.equipment_id,
+    equipmentName: eq?.name ?? "Unknown item",
+    kind: row.kind,
+    status: row.status,
+    startsOn: row.starts_on,
+    endsOn: row.ends_on,
+    reference: row.reference,
+    customerName: row.customer_name,
+    customerPhone: row.customer_phone,
+    customerEmail: row.customer_email,
+    jobNotes: row.job_notes,
+    chargedDays: row.charged_days,
+    hireTotalCents: toCents(row.hire_total),
+    bondTotalCents: toCents(row.bond_total),
+    blockReason: row.block_reason,
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+  };
+}
+
+/**
+ * Bookings for the admin table.
+ *
+ * `kind` defaults to 'hire' — Thomas's own blocks are managed on the
+ * availability screen, not mixed into the customer list.
+ */
+export async function listAdminReservations(
+  supabase: SupabaseClient,
+  opts: {
+    statuses?: ReservationStatus[];
+    kind?: ReservationKind;
+    limit?: number;
+  } = {},
+): Promise<AdminReservation[]> {
+  let q = supabase
+    .from("reservations")
+    .select(`${ADMIN_RESERVATION_COLUMNS}, equipment!inner(name)`)
+    .eq("kind", opts.kind ?? "hire")
+    .order("starts_on", { ascending: true })
+    .limit(opts.limit ?? 400);
+
+  if (opts.statuses?.length) q = q.in("status", opts.statuses);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map((r) => mapAdminReservation(r as unknown as AdminReservationRow));
+}
+
+/** One booking by id, with customer detail. */
+export async function getAdminReservation(
+  supabase: SupabaseClient,
+  id: string,
+): Promise<AdminReservation | null> {
+  const { data, error } = await supabase
+    .from("reservations")
+    .select(`${ADMIN_RESERVATION_COLUMNS}, equipment!inner(name)`)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapAdminReservation(data as unknown as AdminReservationRow) : null;
+}
+
+export type AdminToday = {
+  today: ISODate;
+  /** Requests waiting on an answer, oldest first — these are the ones costing goodwill. */
+  needsAnswer: AdminReservation[];
+  /** Confirmed hires due for collection today. */
+  goingOut: AdminReservation[];
+  /** Hires due back today or earlier. Anything earlier is overdue. */
+  comingBack: AdminReservation[];
+  tiles: {
+    requestsToAnswer: number;
+    outOnHire: number;
+    dueBack: number;
+    onTheFloor: number;
+  };
+};
+
+/**
+ * Everything the Today screen shows, in two queries.
+ *
+ * Thomas opens this on his phone between jobs, so it answers "what needs me
+ * right now" rather than "here is the diary".
+ */
+export async function loadAdminToday(supabase: SupabaseClient): Promise<AdminToday> {
+  const from = today();
+
+  const [open, equipment] = await Promise.all([
+    listAdminReservations(supabase, { statuses: ["pending", "confirmed", "out"] }),
+    listPublishedEquipment(supabase),
+  ]);
+
+  const needsAnswer = open
+    .filter((r) => r.status === "pending")
+    // Oldest request first — it's the one closest to expiring.
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const outOnHire = open.filter((r) => r.status === "out");
+
+  return {
+    today: from,
+    needsAnswer,
+    goingOut: open.filter((r) => r.status === "confirmed" && r.startsOn <= from),
+    // Due back today, plus anything already past its return date.
+    comingBack: outOnHire.filter((r) => r.endsOn <= from),
+    tiles: {
+      requestsToAnswer: needsAnswer.length,
+      outOnHire: outOnHire.length,
+      dueBack: outOnHire.filter((r) => r.endsOn <= from).length,
+      // "On the floor" = published, not currently out. What a walk-in could take.
+      onTheFloor:
+        equipment.length - new Set(outOnHire.map((r) => r.equipmentId)).size,
+    },
+  };
+}
+
+/**
+ * Open reservations for a piece of equipment — the removal rule's gate.
+ *
+ * Returns the reservations that make an item undeletable: anything pending,
+ * confirmed or out. Returned/declined/cancelled history doesn't block
+ * removal, which is why this filters rather than counting every row.
+ */
+export async function openReservationsForEquipment(
+  supabase: SupabaseClient,
+  equipmentId: string,
+): Promise<Array<{ id: string; status: ReservationStatus; startsOn: ISODate; endsOn: ISODate }>> {
+  const { data, error } = await supabase
+    .from("reservations")
+    .select("id, status, starts_on, ends_on")
+    .eq("equipment_id", equipmentId)
+    .in("status", OPEN_STATUSES as unknown as string[]);
+  if (error) throw error;
+  return (data ?? []).map((r: { id: string; status: ReservationStatus; starts_on: string; ends_on: string }) => ({
+    id: r.id,
+    status: r.status,
+    startsOn: r.starts_on,
+    endsOn: r.ends_on,
+  }));
+}
+
+/** Thomas's own blocked periods for an item, upcoming first. */
+export async function listBlocks(
+  supabase: SupabaseClient,
+  equipmentId: string,
+): Promise<AdminReservation[]> {
+  const { data, error } = await supabase
+    .from("reservations")
+    .select(`${ADMIN_RESERVATION_COLUMNS}, equipment!inner(name)`)
+    .eq("equipment_id", equipmentId)
+    .eq("kind", "block")
+    .eq("status", "blocked")
+    .gte("ends_on", today())
+    .order("starts_on", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => mapAdminReservation(r as unknown as AdminReservationRow));
 }
 
 /**

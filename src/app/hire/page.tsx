@@ -8,6 +8,7 @@ import {
   HIRE_PHONE_TEL,
   HIRE_POLICY,
   TERMS_ACCORDION_ORDER,
+  WEEKEND_NOTE,
   today,
 } from "@/lib/hire";
 import { loadHireCatalogue } from "@/lib/hire/repo";
@@ -121,7 +122,7 @@ export default async function HirePage() {
               </div>
               <div>
                 <dt>Over the weekend</dt>
-                <dd>Collect Friday, return Monday — you&rsquo;re only charged for the Friday.</dd>
+                <dd>{WEEKEND_NOTE}</dd>
               </div>
             </dl>
           </div>

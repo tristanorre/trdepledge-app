@@ -19,6 +19,8 @@
 // not re-export ./repo, so no Supabase client reaches the browser bundle.
 
 import Image from "next/image";
+
+import { hirePhotoUrl } from "@/lib/storage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -114,6 +116,64 @@ export default function HireApp({ today, horizon, entries }: Props) {
     },
     [pickTool],
   );
+
+  /**
+   * Doug filling the form in.
+   *
+   * The widget lives in a shadow root and can't touch this component, so
+   * it dispatches an event and we act on it. The server has already
+   * checked the tool is published and the dates are free — we check again
+   * against the holds this page was rendered with, because the two could
+   * disagree if the page has been open a while, and the visitor should
+   * hear that from the calendar rather than from a failed submit.
+   *
+   * Nothing here submits anything. It selects a tool, sets two dates, and
+   * scrolls — exactly what the visitor would have done by hand.
+   */
+  useEffect(() => {
+    function onPrefill(e: Event) {
+      const detail = (e as CustomEvent).detail as
+        | { slug?: string; startsOn?: string; endsOn?: string }
+        | undefined;
+      if (!detail?.slug || !detail.startsOn || !detail.endsOn) return;
+
+      const entry = entries.find((x) => x.equipment.slug === detail.slug);
+      if (!entry) return;
+
+      const entryCtx: AvailabilityContext = {
+        today,
+        holds: entry.holds,
+        changeoverDays: entry.equipment.changeoverDays,
+      };
+      const check = checkHireRange(detail.startsOn, detail.endsOn, entryCtx);
+
+      setSlug(entry.equipment.slug);
+      setMonth(startOfMonth(detail.startsOn));
+
+      if (!check.ok) {
+        setStart(null);
+        setEnd(null);
+        setNotice(check.message);
+      } else {
+        setStart(detail.startsOn);
+        setEnd(detail.endsOn);
+        setNotice(null);
+      }
+
+      // Two frames, not one: React has to commit the new dates before the
+      // form is worth scrolling to, or we'd land on a summary that still
+      // reads "choose a tool and dates above".
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          formRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+          if (check.ok) nameRef.current?.focus({ preventScroll: true });
+        });
+      });
+    }
+
+    window.addEventListener("doug:hire-prefill", onPrefill);
+    return () => window.removeEventListener("doug:hire-prefill", onPrefill);
+  }, [entries, today]);
 
   const onDayClick = useCallback(
     (date: ISODate) => {
@@ -450,10 +510,13 @@ function thumbClass(equipment: Equipment): string {
 
 /** Equipment photo, filling a sized container. Cut-outs contain rather than crop. */
 function ToolImage({ equipment, sizes }: { equipment: Equipment; sizes: string }) {
-  if (!equipment.photoPath) return null;
+  // photo_path is either a file in public/ (the original seed) or a key in
+  // the hire-photos bucket (uploaded by Thomas). Both resolve here.
+  const src = hirePhotoUrl(equipment.photoPath);
+  if (!src) return null;
   return (
     <Image
-      src={equipment.photoPath}
+      src={src}
       alt={`${equipment.name} available for hire`}
       fill
       sizes={sizes}

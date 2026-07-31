@@ -103,6 +103,72 @@ Both ship from one Vercel deploy on different subdomains.
   (a reference collision) is worth retrying — retrying an overlap would be
   wrong, the dates really did go.
 
+
+### DIY Hire admin console
+
+- The booking lifecycle is a state machine in `src/lib/hire/workflow.ts`. The UI
+  uses it to decide which buttons to show; `/api/admin/hire/reservations/[id]`
+  uses it to decide what actually happens. The buttons are a suggestion — the
+  route re-checks against the row's *current* status, because Thomas leaves
+  tabs open.
+- `declined` and `cancelled` are deliberately different: Thomas declines, the
+  expiry sweep cancels. Keeping them apart lets the list tell "he said no" from
+  "they never heard back in time" — different conversations to have.
+- Status updates are guarded on the status that was checked
+  (`.eq("status", previous)`), so two admins acting at once can't both win.
+- **Removal rule:** equipment with any pending/confirmed/out reservation cannot
+  be deleted — the route refuses with `canUnpublish: true` and the UI offers
+  unpublishing instead. Anything else is *soft* deleted (`deleted_at`), never
+  hard: `on delete restrict` would refuse anyway, and history has to survive.
+- Admin reads use `ADMIN_RESERVATION_COLUMNS`, which includes customer detail.
+  The PII-free `HOLD_COLUMNS` is what the public page and Doug use. Don't swap
+  one for the other to save a query.
+- **Hire SMS goes out after the write, never inside it** (`src/lib/hire/sms.ts`).
+  A request texts Thomas; confirming texts the customer. Both dispatch through
+  `after()` so the serverless instance survives the send — a bare floating
+  promise gets dropped when the response closes. A Twilio outage must never
+  cost a customer their booking or undo a confirmation.
+- Declining deliberately sends **nothing**. A template can't explain why a
+  request was refused, so that stays a phone call, and the decline dialog says
+  so. Confirming is the only transition the customer hears about.
+- SMS copy is written to fit **two GSM-7 segments**. One curly quote or en dash
+  forces UCS-2 and cuts the segment size from 160 to 70 characters, tripling the
+  cost invisibly. `forcesUnicode()` and the tests in `unit/hire-sms.spec.ts`
+  hold that line — don't "tidy" the punctuation in those strings.
+- `HIRE_NOTIFY_MOBILE` picks the recipient, mirroring `ENQUIRY_NOTIFY_EMAIL`.
+  Unset, it falls back to the flyer number.
+
+### Doug on the hire page
+
+- **One bot, two modes.** The widget and `/api/enquiry` are shared with the
+  marketing site; the browser sends `page` and the server picks the prompt
+  (`dougSystemPrompt` in `src/lib/hire/doug.ts`). On `/hire` an appended
+  section explicitly overrides the eleven-field intake — nobody hiring a mixer
+  wants to be asked their postcode. Everywhere else the intake is untouched and
+  gains only a short note that a hire desk exists. Both modes can switch to the
+  other when the visitor clearly wants it. **Add to the persona, never replace
+  it** — `dougSystemPrompt` takes the base prompt as an argument.
+- **No figure reaches Doug except through a tool call.** The prompt contains no
+  rate, bond, date or policy sentence, and `unit/hire-doug.spec.ts` fails the
+  build if one appears — including in an innocent-looking format example. Tool
+  results carry *pre-rendered strings* (`"$160"`, `"Fri, 7 Aug"`) rather than
+  cents and day counts, because a model handed ingredients will do the
+  arithmetic itself. That's the whole reason the formatters exist.
+- **There is no `create_booking` tool, and there must never be one.** Doug can
+  look things up and call `prefill_booking_form`, which fills the form in and
+  scrolls to it. The customer still types their own details and presses the
+  button, so every reservation goes through `/api/hire/bookings`, which
+  re-prices and re-checks. The widget can't touch the page directly (shadow
+  DOM), so the handoff travels as a `doug:hire-prefill` CustomEvent that
+  `HireApp` listens for — and re-checks the range before accepting.
+- `doug-tools.ts` reads only the PII-free path and published-only equipment.
+  A conversation with one customer physically cannot surface another's details
+  because the columns are never selected. Keep it that way.
+- Tool failures return a *result Doug can read out*, never a thrown error — a
+  mistyped slug should get a recovery, not "Doug's on smoko". `hire_policy` and
+  the not-on-the-hire-page refusal both answer with the database down, since
+  neither needs a row.
+
 ## Code patterns
 
 ### API auth
