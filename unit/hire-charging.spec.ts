@@ -22,11 +22,15 @@ test.describe("closed days", () => {
   });
 });
 
-// The four rows of the charging table in the spec. These are the numbers
-// advertised on the public page, so they are the ones that must not drift.
-test.describe("charged days — the spec's table", () => {
-  test("Fri → Mon charges one day", () => {
-    expect(chargedDays(FRI, NEXT_MON)).toBe(1);
+// The charging table as it actually stands. Note Fri → Mon is TWO days,
+// not the one the original build spec listed: Thomas's call, because a tool
+// out Friday and back Monday is off the floor for three days. Weekend days
+// are still not charged — the weekend just can't drag a hire below two.
+// These are the numbers advertised on the public page, so they are the ones
+// that must not drift.
+test.describe("charged days — the charging table", () => {
+  test("Fri → Mon charges two days, not one", () => {
+    expect(chargedDays(FRI, NEXT_MON)).toBe(2);
   });
 
   test("Mon → Tue charges one day", () => {
@@ -52,9 +56,22 @@ test.describe("charged days — edges", () => {
     expect(chargedDays(MON, WED) - chargedDays(MON, TUE)).toBe(1);
   });
 
-  test("a weekend inside the hire is free", () => {
-    // Fri → Wed spans Sat and Sun; only Fri, Mon, Tue are charged.
+  test("a weekend inside the hire is still not charged", () => {
+    // Fri → Wed spans Sat and Sun; only Fri, Mon, Tue are charged. The
+    // two-day minimum doesn't apply because three already clears it.
     expect(chargedDays(FRI, "2026-08-12")).toBe(3);
+  });
+
+  test("the weekend minimum only lifts hires that fall under it", () => {
+    // Under two: lifted. At or above two: untouched.
+    expect(chargedDays(FRI, NEXT_MON)).toBe(2); // would be 1
+    expect(chargedDays(FRI, "2026-08-11")).toBe(2); // Fri + Mon, already 2
+    expect(chargedDays(MON, "2026-08-17")).toBe(10); // fortnight, unchanged
+  });
+
+  test("a weekday hire never picks up the minimum", () => {
+    expect(chargedDays(MON, TUE)).toBe(1);
+    expect(chargedDays(TUE, WED)).toBe(1);
   });
 
   test("a fortnight over two weekends charges ten days", () => {
@@ -74,10 +91,15 @@ test.describe("quote", () => {
     expect(q.totalDueAtPickupCents).toBe(20_000);
   });
 
-  test("a weekend-spanning hire costs the same as the Friday alone", () => {
+  test("a weekend-spanning hire bills two days", () => {
     const weekend = quoteHire(mixer, FRI, NEXT_MON);
-    const single = quoteHire(mixer, MON, TUE);
-    expect(weekend.totalDueAtPickupCents).toBe(single.totalDueAtPickupCents);
+    expect(weekend.chargedDays).toBe(2);
+    expect(weekend.hireSubtotalCents).toBe(10_000);
+    expect(weekend.totalDueAtPickupCents).toBe(20_000);
+    // …and costs more than a single weekday hire, which it didn't before.
+    expect(weekend.totalDueAtPickupCents).toBeGreaterThan(
+      quoteHire(mixer, MON, TUE).totalDueAtPickupCents,
+    );
   });
 
   test("arithmetic stays in integer cents", () => {

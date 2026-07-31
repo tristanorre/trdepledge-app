@@ -163,9 +163,10 @@ export const HIRE_POLICY: Record<PolicyTopic, PolicyEntry> = {
   duration: {
     title: "How the day is counted",
     body:
-      "A day runs from pickup to the same time the next day. We're closed Saturday and Sunday, " +
-      "so the weekend isn't charged — collect Friday afternoon, bring it back Monday morning, " +
-      "and you pay for the Friday. Late returns are charged at the full daily rate.",
+      "A day runs from pickup to the same time the next day, and the day you bring it back " +
+      "isn't charged. We're closed Saturday and Sunday, so weekend days aren't charged either — " +
+      "but a hire that keeps the tool over the weekend is charged for two days. Collect Friday, " +
+      "bring it back Monday, and you pay for two. Late returns are charged at the full daily rate.",
     unconfirmed: true, // late return charge unverified
   },
   fuel: {
@@ -217,6 +218,17 @@ export const HIRE_POLICY: Record<PolicyTopic, PolicyEntry> = {
       "the booking.",
   },
 };
+
+/**
+ * The weekend line on the hero counter-facts strip.
+ *
+ * Lives here rather than in the page so it can't drift out of step with
+ * `chargedDays()` and `HIRE_POLICY.duration`. The spec is explicit that the
+ * weekend rule is advertised in three places and the copy has to move
+ * whenever the rule does.
+ */
+export const WEEKEND_NOTE =
+  "Collect Friday, return Monday — charged as two days, not three." as const;
 
 /** The six entries the /hire terms accordion renders, in prototype order. */
 export const TERMS_ACCORDION_ORDER: readonly PolicyTopic[] = [

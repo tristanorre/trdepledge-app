@@ -103,6 +103,27 @@ Both ship from one Vercel deploy on different subdomains.
   (a reference collision) is worth retrying — retrying an overlap would be
   wrong, the dates really did go.
 
+
+### DIY Hire admin console
+
+- The booking lifecycle is a state machine in `src/lib/hire/workflow.ts`. The UI
+  uses it to decide which buttons to show; `/api/admin/hire/reservations/[id]`
+  uses it to decide what actually happens. The buttons are a suggestion — the
+  route re-checks against the row's *current* status, because Thomas leaves
+  tabs open.
+- `declined` and `cancelled` are deliberately different: Thomas declines, the
+  expiry sweep cancels. Keeping them apart lets the list tell "he said no" from
+  "they never heard back in time" — different conversations to have.
+- Status updates are guarded on the status that was checked
+  (`.eq("status", previous)`), so two admins acting at once can't both win.
+- **Removal rule:** equipment with any pending/confirmed/out reservation cannot
+  be deleted — the route refuses with `canUnpublish: true` and the UI offers
+  unpublishing instead. Anything else is *soft* deleted (`deleted_at`), never
+  hard: `on delete restrict` would refuse anyway, and history has to survive.
+- Admin reads use `ADMIN_RESERVATION_COLUMNS`, which includes customer detail.
+  The PII-free `HOLD_COLUMNS` is what the public page and Doug use. Don't swap
+  one for the other to save a query.
+
 ## Code patterns
 
 ### API auth

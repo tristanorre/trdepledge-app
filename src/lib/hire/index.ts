@@ -21,12 +21,15 @@ export * from "./dates";
 export * from "./charging";
 export * from "./availability";
 export * from "./booking";
+export * from "./workflow";
+export * from "./equipment-form";
 export {
   HIRE_PUBLIC_LAUNCH,
   HIRE_PHONE,
   HIRE_PHONE_TEL,
   HIRE_LOCATION,
   COUNTER_HOURS,
+  WEEKEND_NOTE,
   CLOSED_DAY_INDICES,
   PENDING_HOLD_HOURS,
   AVAILABILITY_HORIZON_DAYS,

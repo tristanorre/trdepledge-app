@@ -1,4 +1,8 @@
 import type { JobStatus, EnquiryStatus } from "@/lib/types";
+import { STATUS_LABELS, STATUS_TONE } from "@/lib/hire/workflow";
+import type { ReservationStatus } from "@/lib/hire/types";
+
+type HireTone = (typeof STATUS_TONE)[ReservationStatus];
 
 const JOB_COLOURS: Record<JobStatus, { bg: string; fg: string; label: string }> = {
   scheduled:      { bg: "rgba(26, 79, 181, 0.12)", fg: "#1A4FB5", label: "Scheduled" },
@@ -14,6 +18,27 @@ const ENQUIRY_COLOURS: Record<EnquiryStatus, { bg: string; fg: string; label: st
   converted: { bg: "rgba(10, 31, 61, 0.85)",   fg: "#FFFFFF", label: "Converted" },
   closed:    { bg: "rgba(107, 114, 128, 0.18)",fg: "#4B5563", label: "Closed" },
 };
+
+// DIY Hire. Labels come from the workflow module rather than being repeated
+// here, so the bookings table, the Today screen and the API's refusal
+// messages all call a status the same thing.
+const HIRE_TONES: Record<HireTone, { bg: string; fg: string }> = {
+  warn: { bg: "rgba(217, 119, 6, 0.14)", fg: "#B45309" },
+  good: { bg: "rgba(26, 79, 181, 0.12)", fg: "#1A4FB5" },
+  live: { bg: "rgba(168, 216, 24, 0.22)", fg: "#3F5C00" },
+  done: { bg: "rgba(34, 134, 58, 0.14)", fg: "#15803D" },
+  muted: { bg: "rgba(107, 114, 128, 0.18)", fg: "#4B5563" },
+};
+
+export function HireStatusPill({ status }: { status: ReservationStatus }) {
+  const c = HIRE_TONES[STATUS_TONE[status]];
+  return <Pill bg={c.bg} fg={c.fg} label={STATUS_LABELS[status]} />;
+}
+
+/** Overdue is a property of a hire, not a status, so it gets its own pill. */
+export function OverduePill() {
+  return <Pill bg="rgba(220, 38, 38, 0.14)" fg="#B91C1C" label="Overdue" />;
+}
 
 export function JobStatusPill({ status }: { status: JobStatus }) {
   const c = JOB_COLOURS[status];
