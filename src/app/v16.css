@@ -386,10 +386,10 @@ main { padding-top: 0; }
   text-decoration: none;
   /* Not a link and not a button — nothing here responds to a click. */
   cursor: default;
-  /* Slow breath rather than a blink: it has to pull the eye across a very
-     yellow hero without competing with the headline or reading as a bug.
-     4s and a 6% swell is about as far as it goes before it starts to
-     nag. */
+  /* Rocks 10deg each way while it swells, on a slow 4s ease so it reads
+     as a deliberate wave rather than a blink or a rendering fault. The
+     -2deg above is only what it rests at with motion turned off; the
+     keyframes drive the angle the rest of the time. */
   animation: v16-hire-pulse 4s ease-in-out infinite;
   will-change: transform;
 }
@@ -400,7 +400,7 @@ main { padding-top: 0; }
    the moment the animation started. */
 @keyframes v16-hire-pulse {
   0%, 100% {
-    transform: translateY(-50%) rotate(-2deg) scale(1);
+    transform: translateY(-50%) rotate(-10deg) scale(1);
     border-color: var(--lime);
     box-shadow:
       0 0 0 0 rgba(168, 216, 24, 0),
@@ -408,7 +408,7 @@ main { padding-top: 0; }
       inset 0 0 0 0 rgba(168, 216, 24, 0);
   }
   50% {
-    transform: translateY(-50%) rotate(-2deg) scale(1.06);
+    transform: translateY(-50%) rotate(10deg) scale(1.06);
     /* Three layers, because lime on yellow is nearly invisible on its own:
        an outer lime haze that only really shows where it crosses the
        navy edge, a navy drop shadow that lifts the tile off the yellow,
@@ -463,7 +463,7 @@ main { padding-top: 0; }
 
 @keyframes v16-hire-pulse-inflow {
   0%, 100% {
-    transform: rotate(-2deg) scale(1);
+    transform: rotate(-10deg) scale(1);
     border-color: var(--lime);
     box-shadow:
       0 0 0 0 rgba(168, 216, 24, 0),
@@ -471,7 +471,7 @@ main { padding-top: 0; }
       inset 0 0 0 0 rgba(168, 216, 24, 0);
   }
   50% {
-    transform: rotate(-2deg) scale(1.06);
+    transform: rotate(10deg) scale(1.06);
     /* Three layers, because lime on yellow is nearly invisible on its own:
        an outer lime haze that only really shows where it crosses the
        navy edge, a navy drop shadow that lifts the tile off the yellow,
