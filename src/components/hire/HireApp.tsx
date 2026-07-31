@@ -19,6 +19,8 @@
 // not re-export ./repo, so no Supabase client reaches the browser bundle.
 
 import Image from "next/image";
+
+import { hirePhotoUrl } from "@/lib/storage";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -450,10 +452,13 @@ function thumbClass(equipment: Equipment): string {
 
 /** Equipment photo, filling a sized container. Cut-outs contain rather than crop. */
 function ToolImage({ equipment, sizes }: { equipment: Equipment; sizes: string }) {
-  if (!equipment.photoPath) return null;
+  // photo_path is either a file in public/ (the original seed) or a key in
+  // the hire-photos bucket (uploaded by Thomas). Both resolve here.
+  const src = hirePhotoUrl(equipment.photoPath);
+  if (!src) return null;
   return (
     <Image
-      src={equipment.photoPath}
+      src={src}
       alt={`${equipment.name} available for hire`}
       fill
       sizes={sizes}

@@ -3,6 +3,34 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export const PHOTOS_BUCKET = "job-photos";
 export const ASSET_IMAGES_BUCKET = "asset-images";
 
+// DIY Hire equipment photos. PUBLIC, unlike the two above — see
+// migration 0034 for why. No signing: the URL is stable so browsers and
+// the CDN can cache it, which is the whole point for a public page.
+export const HIRE_PHOTOS_BUCKET = "hire-photos";
+
+/**
+ * Public URL for an uploaded hire photo.
+ *
+ * `equipment.photo_path` holds one of two things, and both must keep
+ * working:
+ *
+ *   "/hire/cement-mixer.webp"  — a file in public/, from the original seed
+ *   "equipment/<id>/<ts>.webp" — a key in the hire-photos bucket
+ *
+ * Anything already starting with "/" or "http" is passed straight through;
+ * everything else is treated as a storage key. That means Thomas can
+ * replace a seeded photo with an uploaded one without a migration, and the
+ * five flyer-derived images keep working until he does.
+ */
+export function hirePhotoUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  if (path.startsWith("/") || path.startsWith("http")) return path;
+
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!base) return null;
+  return `${base}/storage/v1/object/public/${HIRE_PHOTOS_BUCKET}/${path}`;
+}
+
 // Signed URLs valid for 8 hours — covers a full workday so a job
 // detail page left open from 8am morning briefing is still showing
 // photos at 4pm. Trade-off: a screenshot of the URL is shareable for

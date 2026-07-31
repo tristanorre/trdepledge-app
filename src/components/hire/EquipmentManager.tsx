@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { fmtHireMoney, validateEquipment, type Equipment } from "@/lib/hire";
+import { hirePhotoUrl } from "@/lib/storage";
 import * as s from "./adminStyles";
 
 type Draft = {
@@ -246,8 +247,14 @@ export default function EquipmentManager({
                   background: "#F3F4F6",
                 }}
               >
-                {e.photoPath && (
-                  <Image src={e.photoPath} alt="" fill sizes="56px" style={{ objectFit: "cover" }} />
+                {hirePhotoUrl(e.photoPath) && (
+                  <Image
+                    src={hirePhotoUrl(e.photoPath)!}
+                    alt=""
+                    fill
+                    sizes="56px"
+                    style={{ objectFit: "cover" }}
+                  />
                 )}
               </div>
 
@@ -382,14 +389,21 @@ function EquipmentForm({
           </small>
         </Field>
 
-        <Field label="Photo path">
-          <input
-            className="form-input"
-            value={draft.photoPath}
-            onChange={(e) => set("photoPath", e.target.value)}
-            placeholder="/hire/cement-mixer.webp"
-          />
-        </Field>
+        {draft.id ? (
+          <Field label="Photo">
+            <PhotoUploader
+              equipmentId={draft.id}
+              photoPath={draft.photoPath}
+              onChange={(p) => set("photoPath", p)}
+            />
+          </Field>
+        ) : (
+          <Field label="Photo">
+            <p style={{ ...s.muted, margin: 0, fontSize: 13 }}>
+              Add the tool first, then edit it to upload a photo.
+            </p>
+          </Field>
+        )}
       </div>
 
       <div style={{ marginTop: 12 }}>
@@ -434,6 +448,148 @@ function EquipmentForm({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Upload / replace / remove the photo for one item.
+ *
+ * Saves immediately rather than waiting for the form's Save button. A file
+ * upload is a multipart request to its own endpoint, so folding it into the
+ * JSON save would mean either holding the bytes in memory until Save or
+ * inventing a two-phase submit — and Thomas taking a photo on his phone
+ * expects it to be there once the spinner stops.
+ */
+function PhotoUploader({
+  equipmentId,
+  photoPath,
+  onChange,
+}: {
+  equipmentId: string;
+  photoPath: string;
+  onChange: (path: string) => void;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const preview = hirePhotoUrl(photoPath);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const res = await fetch(`/api/admin/hire/equipment/${equipmentId}/photo`, {
+        method: "POST",
+        body,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error ?? "That photo didn't upload. Try again.");
+        return;
+      }
+      onChange(data.photoPath ?? "");
+      router.refresh();
+    } catch {
+      setError("That photo didn't upload — check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clear() {
+    if (!window.confirm("Remove this photo?")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/hire/equipment/${equipmentId}/photo`, {
+        method: "DELETE",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error ?? "That didn't save. Try again.");
+        return;
+      }
+      onChange("");
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div
+          style={{
+            position: "relative",
+            width: 72,
+            height: 72,
+            flex: "0 0 72px",
+            borderRadius: 8,
+            overflow: "hidden",
+            background: "#F3F4F6",
+            border: "1px solid #E5E7EB",
+          }}
+        >
+          {preview && (
+            <Image src={preview} alt="" fill sizes="72px" style={{ objectFit: "cover" }} />
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {/* A label wrapping a hidden input is the accessible way to get a
+              styled file picker — it stays keyboard-reachable and announces
+              properly, which a div with an onClick would not. */}
+          <label
+            style={{
+              ...s.actionButton("quiet"),
+              display: "inline-flex",
+              alignItems: "center",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            {busy ? "Uploading…" : preview ? "Replace photo" : "Upload a photo"}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={busy}
+              style={{
+                position: "absolute",
+                width: 1,
+                height: 1,
+                opacity: 0,
+                overflow: "hidden",
+              }}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                // Reset so picking the same file twice still fires onChange.
+                e.target.value = "";
+                if (f) void upload(f);
+              }}
+            />
+          </label>
+
+          {preview && (
+            <button type="button" style={s.actionButton("danger")} disabled={busy} onClick={clear}>
+              Remove photo
+            </button>
+          )}
+        </div>
+      </div>
+
+      <small style={{ ...s.muted, fontSize: 12, display: "block", marginTop: 6 }}>
+        JPG, PNG or WebP, up to 10 MB. Saves as soon as it uploads.
+      </small>
+
+      {error && (
+        <p style={s.errorText} role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -32,6 +32,23 @@ const SECURITY_HEADERS = [
 
 const nextConfig = {
   reactStrictMode: true,
+
+  images: {
+    // Uploaded DIY Hire equipment photos are served from the public
+    // `hire-photos` Supabase bucket (migration 0034), so next/image has to
+    // be told that host is allowed. Wildcarded on the project ref rather
+    // than hardcoded, so preview/staging projects work without an edit.
+    // Scoped to the public object path — signed/private object URLs are
+    // deliberately NOT matched.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+    ],
+  },
+
   async headers() {
     return [
       {
