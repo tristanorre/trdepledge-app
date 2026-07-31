@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/job-reminders",
       "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/hire-expiry",
+      "schedule": "15 9 * * *"
     }
   ]
 }
