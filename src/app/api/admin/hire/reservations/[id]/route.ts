@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 
-import { canTransition, refusalReason, transitionFor } from "@/lib/hire";
+import {
+  amountDueAtPickup,
+  bondRefusalReason,
+  canDecideBond,
+  canTransition,
+  refusalReason,
+  transitionFor,
+} from "@/lib/hire";
 import { confirmedForCustomer } from "@/lib/hire/sms";
 import { getAdminReservation } from "@/lib/hire/repo";
 import { after } from "@/lib/after";
@@ -49,6 +56,53 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         { error: "That's one of your blocked periods — release it on the availability screen." },
         { status: 409 },
       );
+    }
+
+    // The bond is decided separately from the lifecycle: waiving doesn't
+    // move a booking along, it changes what's owed when it gets there.
+    // Handled before the transition gate so it isn't measured against a
+    // state machine it was never part of.
+    if (action === "waive-bond" || action === "reinstate-bond") {
+      if (!canDecideBond(reservation.status)) {
+        return NextResponse.json(
+          { error: bondRefusalReason(reservation.status), status: reservation.status },
+          { status: 409 },
+        );
+      }
+
+      const waived = action === "waive-bond";
+      const { data, error } = await supabase
+        .from("reservations")
+        .update({ bond_waived: waived })
+        .eq("id", reservation.id)
+        // Guard on the value we read, same as the status updates below, so
+        // two tabs can't both think they won.
+        .eq("bond_waived", reservation.bondWaived)
+        .select("id, bond_waived")
+        .maybeSingle();
+
+      if (error) {
+        console.error("[admin/hire/reservations] bond update failed", error);
+        return NextResponse.json({ error: "That didn't save. Try again." }, { status: 500 });
+      }
+      if (!data) {
+        return NextResponse.json(
+          { error: "Someone just changed that booking. Refresh and take another look." },
+          { status: 409 },
+        );
+      }
+
+      // No text either way. The customer hears the total when Thomas
+      // confirms; if he waives afterwards it's a conversation at the
+      // counter, and a bare "your bond changed" SMS would raise more
+      // questions than it answers.
+      return NextResponse.json({
+        ok: true,
+        action,
+        bondWaived: data.bond_waived === true,
+        status: reservation.status,
+        texted: false,
+      });
     }
 
     if (!canTransition(reservation.status, action)) {
@@ -106,7 +160,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
             equipmentName: reservation.equipmentName,
             startsOn: reservation.startsOn,
             endsOn: reservation.endsOn,
-            totalDueAtPickupCents: reservation.hireTotalCents + reservation.bondTotalCents,
+            // Through the shared helper, so a waived bond reaches the
+            // customer as the figure they will actually be asked for.
+            totalDueAtPickupCents: amountDueAtPickup(reservation),
+            bondWaived: reservation.bondWaived,
           }),
           { trigger_type: "auto", recipient_name: reservation.customerName },
           supabase,

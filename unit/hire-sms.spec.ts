@@ -60,6 +60,18 @@ test.describe("the text to the customer", () => {
     expect(msg).toContain("0474 844 204");
   });
 
+  test("a waived bond changes what they are told to bring", () => {
+    const withBond = confirmedForCustomer(CTX);
+    const noBond = confirmedForCustomer({ ...CTX, bondWaived: true });
+
+    expect(withBond).toContain("a card for the bond");
+    expect(noBond).not.toContain("a card for the bond");
+    expect(noBond).toContain("no bond on this one");
+
+    // Photo ID is an identity check, not a bond condition — it survives.
+    expect(noBond).toContain("photo ID");
+  });
+
   test("uses the first name only", () => {
     expect(confirmedForCustomer(CTX)).toContain("Hi Jane,");
     expect(confirmedForCustomer(CTX)).not.toContain("Jane Citizen");
@@ -79,6 +91,9 @@ test.describe("encoding and length", () => {
   const messages = [
     ["to Thomas", newRequestForThomas(CTX, ADMIN_URL)],
     ["to customer", confirmedForCustomer(CTX)],
+    // The waived-bond variant is a different sentence, so it needs its own
+    // budget check — it is not covered by the one above.
+    ["to customer, no bond", confirmedForCustomer({ ...CTX, bondWaived: true })],
   ] as const;
 
   for (const [who, msg] of messages) {

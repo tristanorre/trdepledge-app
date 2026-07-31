@@ -132,6 +132,91 @@ export const STATUS_TONE: Record<ReservationStatus, "warn" | "good" | "live" | "
 /** Statuses a booking can be in while still being someone's live hire. */
 export const OPEN_STATUSES: readonly ReservationStatus[] = ["pending", "confirmed", "out"];
 
+// ─────────────────────────────────────────────────────────────────────
+// The bond waiver
+//
+// Deliberately NOT a transition. Waiving doesn't move a booking through
+// the lifecycle — a pending request with no bond is still pending — so it
+// gets its own gate rather than being bolted onto the state machine and
+// forcing every status into a second dimension.
+//
+// Thomas can do it for a regular he trusts, a trade mate, or any reason he
+// likes. The rule is only about WHEN, not why.
+// ─────────────────────────────────────────────────────────────────────
+
+export type BondAction = "waive-bond" | "reinstate-bond";
+
+/**
+ * Statuses where the bond is still Thomas's to decide.
+ *
+ * Up to and including `out`, because he may only realise who it is when
+ * they turn up at the counter. Once it's `returned` the money has been
+ * handed back or was never taken, and changing the record afterwards would
+ * describe a transaction that didn't happen. Declined and expired
+ * bookings have no counter visit to charge at.
+ */
+export const BOND_DECIDABLE_STATUSES: readonly ReservationStatus[] = [
+  "pending",
+  "confirmed",
+  "out",
+];
+
+export function canDecideBond(status: ReservationStatus): boolean {
+  return BOND_DECIDABLE_STATUSES.includes(status);
+}
+
+/**
+ * The bond button for a booking, or null when it isn't Thomas's call now.
+ *
+ * Waiving before confirming is the tidy path: the confirmation text quotes
+ * the total, so a waiver applied afterwards means the customer has already
+ * been told the higher figure. The label says so on pending bookings
+ * rather than leaving him to work it out at the counter.
+ */
+export function bondActionFor(
+  status: ReservationStatus,
+  bondWaived: boolean,
+): { action: BondAction; label: string; confirm?: string } | null {
+  if (!canDecideBond(status)) return null;
+
+  if (bondWaived) {
+    return {
+      action: "reinstate-bond",
+      label: "Charge the bond",
+      confirm:
+        "Put the bond back on this hire? If you've already confirmed it, " +
+        "they've been texted the lower figure — give them a heads up.",
+    };
+  }
+
+  return {
+    action: "waive-bond",
+    label: "No bond",
+    confirm:
+      status === "pending"
+        ? "Skip the bond for this customer? Do it before you confirm and the " +
+          "text they get will show the lower total."
+        : "Skip the bond for this customer? They've already been texted the " +
+          "total with it, so tell them when they collect.",
+  };
+}
+
+/** Why a bond change was refused, phrased for a person. */
+export function bondRefusalReason(status: ReservationStatus): string {
+  switch (status) {
+    case "returned":
+      return "That hire is finished — the bond has already been settled either way.";
+    case "declined":
+      return "You declined that request, so there's no bond to take.";
+    case "cancelled":
+      return "That request expired, so there's no bond to take.";
+    case "blocked":
+      return "That's one of your own blocked periods, not a customer booking.";
+    default:
+      return "The bond can't be changed on that booking.";
+  }
+}
+
 /** True when a hire is out and should have come back by now. */
 export function isOverdue(status: ReservationStatus, endsOn: string, today: string): boolean {
   return status === "out" && endsOn < today;

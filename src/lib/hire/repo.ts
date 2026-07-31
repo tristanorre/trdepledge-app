@@ -293,7 +293,7 @@ export async function loadHireCatalogue(
 const ADMIN_RESERVATION_COLUMNS =
   "id, equipment_id, kind, status, starts_on, ends_on, reference, customer_name, " +
   "customer_phone, customer_email, job_notes, charged_days, hire_total, bond_total, " +
-  "block_reason, created_at, expires_at";
+  "block_reason, bond_waived, created_at, expires_at";
 
 export type AdminReservation = {
   id: string;
@@ -311,6 +311,8 @@ export type AdminReservation = {
   chargedDays: number | null;
   hireTotalCents: number;
   bondTotalCents: number;
+  /** True when Thomas has decided not to collect the bond on this hire. */
+  bondWaived: boolean;
   blockReason: string | null;
   createdAt: string;
   expiresAt: string | null;
@@ -331,6 +333,7 @@ type AdminReservationRow = {
   charged_days: number | null;
   hire_total: string | number | null;
   bond_total: string | number | null;
+  bond_waived: boolean | null;
   block_reason: string | null;
   created_at: string;
   expires_at: string | null;
@@ -357,6 +360,7 @@ function mapAdminReservation(row: AdminReservationRow): AdminReservation {
     chargedDays: row.charged_days,
     hireTotalCents: toCents(row.hire_total),
     bondTotalCents: toCents(row.bond_total),
+    bondWaived: row.bond_waived === true,
     blockReason: row.block_reason,
     createdAt: row.created_at,
     expiresAt: row.expires_at,

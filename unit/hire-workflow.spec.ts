@@ -2,6 +2,9 @@ import { expect, test } from "@playwright/test";
 
 import {
   actionsFor,
+  bondActionFor,
+  bondRefusalReason,
+  canDecideBond,
   canTransition,
   isOverdue,
   refusalReason,
@@ -9,6 +12,7 @@ import {
   OPEN_STATUSES,
   STATUS_LABELS,
 } from "@/lib/hire/workflow";
+import { amountDueAtPickup } from "@/lib/hire/types";
 import type { ReservationStatus } from "@/lib/hire/types";
 
 const ALL: ReservationStatus[] = [
@@ -143,5 +147,85 @@ test.describe("supporting data", () => {
     // Only a tool actually out can be overdue.
     expect(isOverdue("confirmed", "2026-08-03", "2026-08-05")).toBe(false);
     expect(isOverdue("returned", "2026-08-03", "2026-08-05")).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// The bond waiver.
+//
+// Thomas can decide not to take a bond — a regular he trusts, a trade
+// mate, whatever reason he likes. It is deliberately NOT a lifecycle
+// transition: a pending request with no bond is still pending, so it gets
+// its own gate rather than doubling the state machine.
+// ─────────────────────────────────────────────────────────────────────
+test.describe("the bond is Thomas's call, up to a point", () => {
+  test("he can decide it while the hire is still ahead of him", () => {
+    for (const s of ["pending", "confirmed", "out"] as const) {
+      expect(canDecideBond(s), s).toBe(true);
+      expect(bondActionFor(s, false), s).not.toBeNull();
+    }
+  });
+
+  test("once it's finished or gone, there's nothing to decide", () => {
+    // A returned hire's money has already changed hands (or hasn't);
+    // editing the record afterwards would describe a transaction that
+    // never happened.
+    for (const s of ["returned", "declined", "cancelled", "blocked"] as const) {
+      expect(canDecideBond(s), s).toBe(false);
+      expect(bondActionFor(s, false), s).toBeNull();
+      expect(bondActionFor(s, true), s).toBeNull();
+    }
+  });
+
+  test("the button offers the opposite of what's currently set", () => {
+    expect(bondActionFor("pending", false)?.action).toBe("waive-bond");
+    expect(bondActionFor("pending", true)?.action).toBe("reinstate-bond");
+  });
+
+  test("both directions ask first — this one costs real money", () => {
+    expect(bondActionFor("confirmed", false)?.confirm).toBeTruthy();
+    expect(bondActionFor("confirmed", true)?.confirm).toBeTruthy();
+  });
+
+  test("waiving before confirming is the tidy path, and the prompt says so", () => {
+    // The confirmation text quotes the total. Waive first and the customer
+    // is told the right figure; waive after and they've had the higher one.
+    expect(bondActionFor("pending", false)?.confirm).toMatch(/before you confirm/i);
+    expect(bondActionFor("out", false)?.confirm).toMatch(/already been texted/i);
+  });
+
+  test("a refusal explains itself rather than just saying no", () => {
+    expect(bondRefusalReason("returned")).toMatch(/finished/i);
+    expect(bondRefusalReason("cancelled")).toMatch(/expired/i);
+    expect(bondRefusalReason("declined")).toMatch(/declined/i);
+  });
+
+  test("bond actions are not lifecycle transitions", () => {
+    // If these ever became transitions they'd need a `to` status, and
+    // waiving a bond doesn't move a booking anywhere.
+    for (const s of ["pending", "confirmed", "out"] as const) {
+      expect(canTransition(s, "waive-bond"), s).toBe(false);
+      expect(canTransition(s, "reinstate-bond"), s).toBe(false);
+    }
+  });
+});
+
+test.describe("what's actually due at the counter", () => {
+  const base = { hireTotalCents: 10_000, bondTotalCents: 10_000 };
+
+  test("bond included by default", () => {
+    expect(amountDueAtPickup({ ...base, bondWaived: false })).toBe(20_000);
+  });
+
+  test("waiving drops the bond and nothing else", () => {
+    expect(amountDueAtPickup({ ...base, bondWaived: true })).toBe(10_000);
+  });
+
+  test("the waived bond is still recorded, not erased", () => {
+    // "We let this one off $100" is a different fact from "this item has
+    // no bond", and only the first tells you what the goodwill cost.
+    const booking = { ...base, bondWaived: true };
+    expect(booking.bondTotalCents).toBe(10_000);
+    expect(amountDueAtPickup(booking)).toBe(10_000);
   });
 });

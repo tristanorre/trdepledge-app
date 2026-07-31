@@ -41,6 +41,12 @@ export type BookingSmsContext = {
   startsOn: ISODate;
   endsOn: ISODate;
   totalDueAtPickupCents: number;
+  /**
+   * True when Thomas isn't taking a bond on this hire. Only changes the
+   * customer's message — it tells them not to bring a card for it, which
+   * is the one practical difference at the counter.
+   */
+  bondWaived?: boolean;
 };
 
 /**
@@ -73,10 +79,16 @@ export function newRequestForThomas(
  */
 export function confirmedForCustomer(ctx: BookingSmsContext): string {
   const firstName = ctx.customerName.trim().split(/\s+/)[0] || "there";
+  // Photo ID is asked for either way — it's an ID check, not a bond
+  // condition. Only the card line goes, because that's the sentence that
+  // would otherwise send someone hunting for a card they don't need.
+  const bringLine = ctx.bondWaived
+    ? "at pickup, no bond on this one - just bring photo ID."
+    : "at pickup - bring photo ID and a card for the bond.";
   return [
     `Hi ${firstName}, your ${ctx.equipmentName} hire is confirmed.`,
     `Collect ${fmtHireDate(ctx.startsOn)}, back by ${fmtHireDate(ctx.endsOn)}.`,
-    `${fmtHireMoney(ctx.totalDueAtPickupCents)} at pickup - bring photo ID and a card for the bond.`,
+    `${fmtHireMoney(ctx.totalDueAtPickupCents)} ${bringLine}`,
     `Ref ${ctx.reference}.`,
     `T.R. Depledge ${HIRE_PHONE}`,
   ].join(" ");
