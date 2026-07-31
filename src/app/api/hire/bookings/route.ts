@@ -14,7 +14,10 @@ import {
   getEquipmentBySlug,
   releaseExpiredHolds,
 } from "@/lib/hire/repo";
+import { adminBookingsUrl, hireNotifyMobile, newRequestForThomas } from "@/lib/hire/sms";
+import { after } from "@/lib/after";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { sendSms } from "@/lib/twilio";
 import { getServiceClient } from "@/lib/supabase";
 
 export const runtime = "nodejs";
@@ -154,8 +157,30 @@ export async function POST(req: Request) {
       });
 
       if (!error) {
-        // Phase 6 hangs the SMS to Thomas off this point. A failed text must
-        // never roll back a saved booking, so it goes after the insert.
+        // Tell Thomas. Dispatched AFTER the insert and outside the response
+        // path: a Twilio outage must never cost a customer their booking.
+        // `after()` keeps the serverless instance alive long enough for the
+        // send to finish, which a bare floating promise would not.
+        after(
+          sendSms(
+            hireNotifyMobile(),
+            newRequestForThomas(
+              {
+                reference,
+                customerName: booking.name,
+                customerPhone: booking.phone,
+                equipmentName: equipment.name,
+                startsOn: booking.startsOn,
+                endsOn: booking.endsOn,
+                totalDueAtPickupCents: quote.totalDueAtPickupCents,
+              },
+              adminBookingsUrl(),
+            ),
+            { trigger_type: "auto", recipient_name: "Thomas Depledge" },
+            supabase,
+          ).catch((err) => console.error("[hire/bookings] notify failed", err)),
+        );
+
         return NextResponse.json({
           ok: true,
           reference,

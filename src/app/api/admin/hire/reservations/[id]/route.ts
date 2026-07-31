@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { canTransition, refusalReason, transitionFor } from "@/lib/hire";
+import { confirmedForCustomer } from "@/lib/hire/sms";
 import { getAdminReservation } from "@/lib/hire/repo";
+import { after } from "@/lib/after";
 import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
+import { sendSms } from "@/lib/twilio";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,9 +87,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       );
     }
 
-    // Phase 6 hangs the customer's confirmation SMS off a successful
-    // `confirm`. It goes after the write and must never roll it back.
-    return NextResponse.json({ ok: true, status: data.status, action });
+    // Confirming is the one transition the customer hears about. Declining
+    // stays a phone call on purpose — a template can't explain why, and the
+    // decline dialog says so.
+    //
+    // Dispatched after the write and outside the response path: a Twilio
+    // outage must not undo a confirmation Thomas has already made.
+    let texted = false;
+    if (action === "confirm" && reservation.customerPhone) {
+      texted = true;
+      after(
+        sendSms(
+          reservation.customerPhone,
+          confirmedForCustomer({
+            reference: reservation.reference ?? "",
+            customerName: reservation.customerName ?? "",
+            customerPhone: reservation.customerPhone,
+            equipmentName: reservation.equipmentName,
+            startsOn: reservation.startsOn,
+            endsOn: reservation.endsOn,
+            totalDueAtPickupCents: reservation.hireTotalCents + reservation.bondTotalCents,
+          }),
+          { trigger_type: "auto", recipient_name: reservation.customerName },
+          supabase,
+        ).catch((err) => console.error("[admin/hire/reservations] confirm SMS failed", err)),
+      );
+    }
+
+    return NextResponse.json({ ok: true, status: data.status, action, texted });
   } catch (err) {
     console.error("[admin/hire/reservations] unexpected failure", err);
     return NextResponse.json({ error: "That didn't save. Try again." }, { status: 500 });

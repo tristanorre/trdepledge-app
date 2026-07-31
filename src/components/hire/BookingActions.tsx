@@ -31,6 +31,7 @@ export default function BookingActions({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const available = actionsFor(status);
   if (available.length === 0) return null;
@@ -40,6 +41,7 @@ export default function BookingActions({
 
     setBusy(action);
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch(`/api/admin/hire/reservations/${reservationId}`, {
         method: "POST",
@@ -52,6 +54,11 @@ export default function BookingActions({
         setError(data?.error ?? "That didn't save. Try again.");
         return;
       }
+      // Say when a text went out, so Thomas doesn't send a second one by
+      // hand — and, on decline, that nothing was sent and the call is his.
+      if (data?.texted) setNotice("Confirmed. The customer's been texted.");
+      else if (action === "decline") setNotice("Declined. Give them a call to say why.");
+
       // Re-render the server component so every list on the page reflects
       // the new status, not just this row.
       router.refresh();
@@ -83,6 +90,11 @@ export default function BookingActions({
       {error && (
         <p style={s.errorText} role="alert">
           {error}
+        </p>
+      )}
+      {notice && (
+        <p style={{ fontSize: 13, fontWeight: 600, color: "#166534", margin: "8px 0 0" }} role="status">
+          {notice}
         </p>
       )}
     </div>

@@ -123,6 +123,20 @@ Both ship from one Vercel deploy on different subdomains.
 - Admin reads use `ADMIN_RESERVATION_COLUMNS`, which includes customer detail.
   The PII-free `HOLD_COLUMNS` is what the public page and Doug use. Don't swap
   one for the other to save a query.
+- **Hire SMS goes out after the write, never inside it** (`src/lib/hire/sms.ts`).
+  A request texts Thomas; confirming texts the customer. Both dispatch through
+  `after()` so the serverless instance survives the send — a bare floating
+  promise gets dropped when the response closes. A Twilio outage must never
+  cost a customer their booking or undo a confirmation.
+- Declining deliberately sends **nothing**. A template can't explain why a
+  request was refused, so that stays a phone call, and the decline dialog says
+  so. Confirming is the only transition the customer hears about.
+- SMS copy is written to fit **two GSM-7 segments**. One curly quote or en dash
+  forces UCS-2 and cuts the segment size from 160 to 70 characters, tripling the
+  cost invisibly. `forcesUnicode()` and the tests in `unit/hire-sms.spec.ts`
+  hold that line — don't "tidy" the punctuation in those strings.
+- `HIRE_NOTIFY_MOBILE` picks the recipient, mirroring `ENQUIRY_NOTIFY_EMAIL`.
+  Unset, it falls back to the flyer number.
 
 ## Code patterns
 
