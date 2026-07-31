@@ -386,6 +386,40 @@ main { padding-top: 0; }
   text-decoration: none;
   /* Not a link and not a button — nothing here responds to a click. */
   cursor: default;
+  /* Slow breath rather than a blink: it has to pull the eye across a very
+     yellow hero without competing with the headline or reading as a bug.
+     4s and a 6% swell is about as far as it goes before it starts to
+     nag. */
+  animation: v16-hire-pulse 4s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* The transform is repeated in full inside the keyframes because an
+   animated transform replaces the static one outright — dropping the
+   translate would let the tile fall half its own height down the gutter
+   the moment the animation started. */
+@keyframes v16-hire-pulse {
+  0%, 100% {
+    transform: translateY(-50%) rotate(-2deg) scale(1);
+    border-color: var(--lime);
+    box-shadow:
+      0 0 0 0 rgba(168, 216, 24, 0),
+      0 0 0 0 rgba(10, 31, 61, 0),
+      inset 0 0 0 0 rgba(168, 216, 24, 0);
+  }
+  50% {
+    transform: translateY(-50%) rotate(-2deg) scale(1.06);
+    /* Three layers, because lime on yellow is nearly invisible on its own:
+       an outer lime haze that only really shows where it crosses the
+       navy edge, a navy drop shadow that lifts the tile off the yellow,
+       and an INSET lime glow that lands on the tile's own dark face —
+       that last one is what actually reads as the outline lighting up. */
+    border-color: #eaffb0;
+    box-shadow:
+      0 0 24px 4px rgba(168, 216, 24, 0.5),
+      0 14px 30px rgba(10, 31, 61, 0.34),
+      inset 0 0 20px 2px rgba(168, 216, 24, 0.4);
+  }
 }
 .v16-hire-icon {
   width: 34px; height: 34px;
@@ -420,8 +454,44 @@ main { padding-top: 0; }
   transition: transform 0.18s, box-shadow 0.18s;
 }
 .v16-hire-tile-live:hover {
+  /* Drop the pulse under the cursor — a target that's still moving is a
+     target that's harder to click. */
+  animation: none;
   transform: translateY(-50%) rotate(-2deg) scale(1.03);
   box-shadow: 0 12px 26px rgba(10, 31, 61, 0.32);
+}
+
+@keyframes v16-hire-pulse-inflow {
+  0%, 100% {
+    transform: rotate(-2deg) scale(1);
+    border-color: var(--lime);
+    box-shadow:
+      0 0 0 0 rgba(168, 216, 24, 0),
+      0 0 0 0 rgba(10, 31, 61, 0),
+      inset 0 0 0 0 rgba(168, 216, 24, 0);
+  }
+  50% {
+    transform: rotate(-2deg) scale(1.06);
+    /* Three layers, because lime on yellow is nearly invisible on its own:
+       an outer lime haze that only really shows where it crosses the
+       navy edge, a navy drop shadow that lifts the tile off the yellow,
+       and an INSET lime glow that lands on the tile's own dark face —
+       that last one is what actually reads as the outline lighting up. */
+    border-color: #eaffb0;
+    box-shadow:
+      0 0 24px 4px rgba(168, 216, 24, 0.5),
+      0 14px 30px rgba(10, 31, 61, 0.34),
+      inset 0 0 20px 2px rgba(168, 216, 24, 0.4);
+  }
+}
+
+/* A looping attention-getter is exactly what this setting is for. The
+   tile keeps its lime border and its place; it just stops moving. */
+@media (prefers-reduced-motion: reduce) {
+  .v16-hire-tile,
+  .v16-hire-tile-live:hover {
+    animation: none;
+  }
 }
 
 /* ── TRUST LINE ──────────────────────────────────────────────────── */
@@ -719,6 +789,10 @@ main { padding-top: 0; }
     transform: rotate(-2deg);
     width: 218px;
     margin: 0 0 32px 4px;
+    /* Its own keyframes: in the flow there's no translateY to preserve,
+       and reusing the desktop set would yank the tile up by half its
+       height. */
+    animation-name: v16-hire-pulse-inflow;
   }
   .v16-hire-tile-live:hover {
     transform: rotate(-2deg) scale(1.03);

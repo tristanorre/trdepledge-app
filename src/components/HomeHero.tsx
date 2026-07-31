@@ -81,7 +81,7 @@ function HireTile() {
   return (
     <div className="v16-hire-tile" role="note">
       {label}
-      <span className="v16-hire-sub">// Coming soon</span>
+      <span className="v16-hire-sub">Coming soon</span>
     </div>
   );
 }
