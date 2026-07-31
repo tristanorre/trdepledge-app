@@ -51,7 +51,14 @@ export async function POST(req: Request) {
   const newHash = await bcrypt.hash(next, 10);
   const { error: updateErr } = await supabase
     .from("users")
-    .update({ pin_hash: newHash })
+    .update({
+      pin_hash: newHash,
+      // Clear the temporary-PIN gate — this is the ONLY place it gets
+      // cleared, so the worker layout's blocking screen can't be
+      // skipped without actually setting a new PIN. rejectWeakPin()
+      // above means they can't re-set the seeded default either.
+      must_change_pin: false,
+    })
     .eq("id", session.user.id);
 
   if (updateErr) {

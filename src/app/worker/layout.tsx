@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { requireWorker } from "@/lib/session";
+import { getServiceClient } from "@/lib/supabase";
 import SignOutButton from "@/components/SignOutButton";
 import OneSignalRegister from "@/components/OneSignalRegister";
+import ForcePinChangeScreen from "@/components/ForcePinChangeScreen";
 
 export const metadata: Metadata = {
   title: "My Day",
@@ -19,6 +21,26 @@ const WORKER_NAV = [
 
 export default async function WorkerLayout({ children }: { children: React.ReactNode }) {
   const session = await requireWorker();
+
+  // Temporary-PIN gate. If an admin seeded this worker with a default
+  // PIN, block the whole worker app behind a change-your-PIN screen
+  // until they pick their own. Cleared automatically by
+  // /api/worker/me/pin on success.
+  //
+  // Failing open on a DB error is deliberate — a Supabase hiccup
+  // shouldn't lock the crew out of their jobs mid-shift. The worst
+  // case is one extra shift on the temporary PIN.
+  const supabase = getServiceClient();
+  if (supabase) {
+    const { data: me } = await supabase
+      .from("users")
+      .select("must_change_pin")
+      .eq("id", session.user.id)
+      .maybeSingle();
+    if (me?.must_change_pin) {
+      return <ForcePinChangeScreen name={session.user.name ?? "there"} />;
+    }
+  }
 
   return (
     <div style={shellStyle}>
