@@ -4,6 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
+import { HIRE_PUBLIC_LAUNCH } from "@/lib/hire";
+
 // v16 hero — the visual anchor of the marketing site.
 //
 // Sticky-tall yellow background, two-column layout, big headline with the
@@ -38,6 +40,51 @@ const WALKERS: Array<{ src: string; alt: string; delay: number }> = [
   { src: `/images/walkers/04-hedge-doug.png?v=${V}`,   alt: "Thomas trimming a hedge while Doug watches",     delay: 16.8 },
   { src: `/images/walkers/05-blower-doug.png?v=${V}`,  alt: "Thomas using a leaf blower with Doug nearby",    delay: 22.4 },
 ];
+
+/**
+ * The DIY hire teaser, sitting in the hero's left gutter.
+ *
+ * It is driven by the same `HIRE_PUBLIC_LAUNCH` flag that decides whether
+ * /hire is listed by search engines, so the front door and the listing open
+ * together. Until then this is deliberately inert — not a link, not
+ * focusable, no href to fall through to. The hire page exists and works,
+ * but its bond figures are still placeholders, and a customer who followed
+ * a live button from the home page would read them as fact.
+ *
+ * On desktop it's absolutely positioned into the 280px gutter that clears
+ * the overhanging logo — the one piece of empty yellow in the hero. Below
+ * 960px that gutter collapses, so it drops back into the normal flow under
+ * the two buttons.
+ */
+function HireTile() {
+  const label = (
+    <>
+      <span className="v16-hire-icon" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14.7 6.3a4 4 0 0 0 5 5l-9.4 9.4a2.1 2.1 0 0 1-3-3l9.4-9.4z" />
+          <path d="M17.5 2.5 21.5 6.5" />
+        </svg>
+      </span>
+      <span className="v16-hire-title">Hire Equipment</span>
+    </>
+  );
+
+  if (HIRE_PUBLIC_LAUNCH) {
+    return (
+      <Link className="v16-hire-tile v16-hire-tile-live" href="/hire">
+        {label}
+        <span className="v16-hire-sub">Book the gear online</span>
+      </Link>
+    );
+  }
+
+  return (
+    <div className="v16-hire-tile" role="note">
+      {label}
+      <span className="v16-hire-sub">// Coming soon</span>
+    </div>
+  );
+}
 
 export default function HomeHero() {
   const [townIdx, setTownIdx] = useState(0);
@@ -101,6 +148,8 @@ export default function HomeHero() {
             See Our Work
           </Link>
         </div>
+
+        <HireTile />
 
         <div className="v16-trustline">
           <div className="v16-trust-item">

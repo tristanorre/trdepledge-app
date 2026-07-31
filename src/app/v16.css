@@ -242,6 +242,11 @@ main { padding-top: 0; }
   display: flex;
   flex-direction: column;
   justify-content: center;
+  /* Containing block for the hire teaser, which sits in the 280px gutter
+     above. Absolute positioning resolves against the padding box, so
+     `left` there is measured from the column's outer edge, not from where
+     the text starts. */
+  position: relative;
 }
 
 .v16-eyebrow {
@@ -353,6 +358,71 @@ main { padding-top: 0; }
 }
 .v16-btn-secondary .v16-btn-icon { background: var(--navy); color: white; }
 .v16-btn-secondary:hover .v16-btn-icon { background: var(--lime); color: var(--navy); }
+
+/* ── HIRE EQUIPMENT TEASER ───────────────────────────────────────── */
+
+/* Positioned against .v16-hero-left rather than .v16-hero: the hero grid
+   has a 200px walker row beneath the copy, so centring on the section
+   would push the tile down into the walkers. Centring on the left column
+   lands it beside the headline, which is the empty yellow the design
+   marks out. */
+.v16-hire-tile {
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  /* Same -2deg tilt as the headline's script word, so it reads as part of
+     the composition rather than something dropped on top of it. */
+  transform: translateY(-50%) rotate(-2deg);
+  width: 218px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 16px;
+  border-radius: 14px;
+  background: var(--navy);
+  border: 2px dashed var(--lime);
+  text-align: center;
+  text-decoration: none;
+  /* Not a link and not a button — nothing here responds to a click. */
+  cursor: default;
+}
+.v16-hire-icon {
+  width: 34px; height: 34px;
+  background: var(--lime);
+  color: var(--navy);
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.v16-hire-title {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--lime);
+  line-height: 1.2;
+}
+.v16-hire-sub {
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* The launched state: once HIRE_PUBLIC_LAUNCH flips, the same tile becomes
+   a real link and picks up the hover the other hero buttons have. */
+.v16-hire-tile-live {
+  border-style: solid;
+  cursor: pointer;
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+.v16-hire-tile-live:hover {
+  transform: translateY(-50%) rotate(-2deg) scale(1.03);
+  box-shadow: 0 12px 26px rgba(10, 31, 61, 0.32);
+}
 
 /* ── TRUST LINE ──────────────────────────────────────────────────── */
 
@@ -641,6 +711,17 @@ main { padding-top: 0; }
     grid-row: 1;
     padding: 56px 24px 32px 24px;
     text-align: left;
+  }
+  /* The gutter it lived in is gone at this width, so it rejoins the flow
+     under the two buttons rather than sitting on top of the headline. */
+  .v16-hire-tile {
+    position: static;
+    transform: rotate(-2deg);
+    width: 218px;
+    margin: 0 0 32px 4px;
+  }
+  .v16-hire-tile-live:hover {
+    transform: rotate(-2deg) scale(1.03);
   }
   .v16-hero-right {
     grid-column: 1;
