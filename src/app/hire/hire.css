@@ -375,7 +375,13 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
-  margin: 0;
+  /* `0 auto`, not `0`. This element is `<dl class="wrap strip-grid">`, and
+     the margin here is only meant to drop the <dl>'s default vertical
+     margin. Writing plain `margin: 0` also zeroes the horizontal `auto`
+     that `.wrap` uses to centre — and since both selectors are (0,2,0) and
+     this one comes later, it wins, and the whole strip sits hard left while
+     every other section stays centred. */
+  margin: 0 auto;
 }
 .hire-page .strip dt {
   font-family: var(--font-barlow-condensed), sans-serif;
