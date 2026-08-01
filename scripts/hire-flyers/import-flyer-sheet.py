@@ -49,10 +49,19 @@ PANELS = {
 # flyer copy is exactly the defect this is fixing.
 PRODUCT = {
     "cement-mixer": (180, 172, 398, 398),
-    "post-hole-digger": (185, 165, 389, 400),
+    # Whole auger: engine at y=158 down to the spiral tip, which a row scan
+    # puts at y=422 — stopping at 418 drops the lime rule of the "what it
+    # can be used for" heading, at the cost of a few pixels of spiral tip.
+    # The rate block and feature list are left of x=130, so only the
+    # "hire the tools" bar needs painting out — see ERASE_RECTS.
+    "post-hole-digger": (146, 158, 389, 418),
     # Left edge starts past the DAILY RATE block, which sits at x<140
     # on this panel; the feature list below starts at y>305.
-    "demolition-hammer": (163, 188, 403, 302),
+    # The breaker runs corner to corner THROUGH the rate block and the
+    # feature list, so no rectangle contains the whole tool and nothing
+    # else. Everything bright that is not connected to the tool is
+    # erased first — see ISOLATE below.
+    "demolition-hammer": (14, 163, 403, 426),
     "lawn-roller": (138, 194, 362, 386),
     "deutscher-slasher": (168, 201, 385, 365),
 }
@@ -71,6 +80,50 @@ TINT_TO_BRAND = {
     "lawn-roller": [
         (146, 316), (158, 299), (236, 290), (266, 302),
         (272, 350), (250, 383), (172, 393), (149, 373),
+    ],
+}
+
+# Where a tool overlaps the flyer's own furniture, the furniture is erased
+# rather than the tool cropped. Keyed by a seed point ON the tool: every
+# bright run connected to that seed is kept, everything else bright inside
+# the box is painted out with the panel's own dark ground.
+#
+# Seeded rather than "keep the biggest blob", because the DAILY RATE panel
+# is a solid yellow rectangle and quite capable of being the biggest blob
+# on the page.
+# Flyer furniture to paint out of a CARD crop, where the tool overlaps it.
+#
+# The breaker runs corner to corner across its panel, straight through the
+# rate block and the feature list, so no rectangle holds the whole tool and
+# nothing else. These are painted with the panel's own dark ground.
+#
+# The bounds are not eyeballed. A connected-component pass over the bright
+# pixels gave every object's bbox, and each rectangle below is checked to
+# fall in the gaps between them:
+#
+#   tool   body (225,164)-(397,297)   collar (141,267)-(221,337)
+#          chisel (14,334)-(126,412)  handles (174,185)-(236,238), (382,179)-(402,249)
+#   junk   crest strip (20,163)-(162,176)   rate block (14,214)-(140,324)
+#          feature icons/text x>=242 y>=317   uses bar (37,422)-(197,425)
+#
+# Erasing by brightness instead was tried and leaves ghosts: the letters go
+# but their anti-aliased edges sit under any sensible threshold, so the card
+# shows a shadow of "DAILY RATE $50".
+ERASE_RECTS = {
+    # Just the right-hand end of the crest's "hire the tools" bar, which
+    # reaches x=170 and so pokes into the left of the auger's crop. The
+    # tool's own pixels on those rows start at x=171.
+    "post-hole-digger": [(138, 150, 171, 182)],
+    "demolition-hammer": [
+        # x<173 throughout: the front handle starts at x=174 and the body at
+        # x=225, so this clears the whole crest without touching either.
+        (8, 148, 173, 214),
+        # Rate block including the PER DAY bar. Row scan: the block's bright
+        # pixels run to y=338, and the chisel's first bright pixel on any row
+        # is x=106 at y=341 — so stopping at x=139, y=341 misses it.
+        (8, 196, 139, 341),
+        (230, 302, 403, 426),  # feature list, starting below the body (y<=297)
+        (8, 414, 232, 426),    # "what it can be used for" bar, below the tip (y<=412)
     ],
 }
 
@@ -130,6 +183,36 @@ def tint_to_brand(panel: Image.Image, polygon: list) -> int:
     return changed
 
 
+def erase_furniture(panel: Image.Image, rects: list) -> int:
+    """Paint flyer furniture out of a card crop with the panel's own ground.
+
+    Flat fill plus grain, sampled from the darkest pixels around the tool, so
+    the patch matches the speckled backdrop the photograph was shot on.
+    """
+    import colorsys
+    import random
+    import statistics
+
+    px = panel.load()
+    dark = [
+        px[x, y][:3]
+        for y in range(0, panel.height, 3)
+        for x in range(0, panel.width, 3)
+        if colorsys.rgb_to_hsv(*[c / 255 for c in px[x, y][:3]])[2] < 0.08
+    ]
+    base = tuple(int(statistics.median(c[i] for c in dark)) for i in range(3))
+    rng = random.Random(11)
+
+    painted = 0
+    for x0, y0, x1, y1 in rects:
+        for y in range(y0, min(y1, panel.height)):
+            for x in range(x0, min(x1, panel.width)):
+                j = rng.gauss(0, 2)
+                px[x, y] = tuple(max(0, min(255, int(base[i] + j))) for i in range(3))
+                painted += 1
+    return painted
+
+
 def import_sheet(sheet: Image.Image, out: Path) -> None:
     for slug, box in PANELS.items():
         panel = sheet.crop(box)
@@ -141,7 +224,18 @@ def import_sheet(sheet: Image.Image, out: Path) -> None:
 
         if slug not in PRODUCT:
             continue
-        shot = panel.crop(PRODUCT[slug])
+
+        # Erasing the flyer's furniture is for the CARD only — the flyer
+        # itself obviously has to keep its rate block and feature list. Done
+        # on a copy for exactly that reason; doing it in place stripped the
+        # $50 off the printed hammer flyer.
+        source = panel
+        if slug in ERASE_RECTS:
+            source = panel.copy()
+            n = erase_furniture(source, ERASE_RECTS[slug])
+            print(f"{slug}: {n} px of flyer furniture painted out, card only")
+
+        shot = source.crop(PRODUCT[slug])
         card = shot.resize(
             (CARD_WIDTH, round(CARD_WIDTH * shot.height / shot.width)), Image.LANCZOS
         )
