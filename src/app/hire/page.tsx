@@ -30,7 +30,68 @@ const STEPS = [
   { n: 4, title: "Collect and go", body: "Quick run-through on how it works before you leave." },
 ];
 
-export default async function HirePage() {
+/**
+ * `/hire?debug=catalogue` prints what the SERVER read, before any of it
+ * reaches the browser.
+ *
+ * It exists because the Lawn Mower's "View the flyer" link is missing on
+ * production while its `flyer_path` is plainly set in the database, the file
+ * plainly serves, and the button is gated on that value and nothing else.
+ * Every one of those was checked from the outside and agreed; the one thing
+ * nobody could see was what this page actually receives. Guessing at that
+ * from the source cost several rounds, so now it says.
+ *
+ * Safe to leave in place. It prints published equipment only — the same rows
+ * the page already renders — and paths that are already public URLs. No
+ * customer detail is anywhere near this code path. The commit is included
+ * because "is the deploy even current?" was a live question for most of the
+ * hunt and took far too long to rule out.
+ */
+function CatalogueDebug({
+  entries,
+  today: from,
+  loaded,
+}: {
+  entries: Array<{ equipment: { slug: string; photoPath: string | null; flyerPath: string | null } }>;
+  today: string;
+  loaded: boolean;
+}) {
+  const commit = process.env.VERCEL_GIT_COMMIT_SHA ?? "(not on Vercel)";
+  const lines = [
+    `commit          ${commit}`,
+    `database        ${loaded ? "connected" : "NOT CONFIGURED"}`,
+    `today           ${from}`,
+    `entries         ${entries.length}`,
+    "",
+    ...entries.map(
+      ({ equipment: e }) =>
+        `${e.slug.padEnd(20)} flyer=${e.flyerPath ?? "(null)"}  photo=${e.photoPath ?? "(null)"}`,
+    ),
+  ];
+
+  return (
+    <pre
+      style={{
+        margin: 0,
+        padding: 16,
+        background: "#111",
+        color: "#8f8",
+        fontSize: 12,
+        lineHeight: 1.6,
+        overflowX: "auto",
+        whiteSpace: "pre",
+      }}
+    >
+      {lines.join("\n")}
+    </pre>
+  );
+}
+
+export default async function HirePage({
+  searchParams,
+}: {
+  searchParams?: { debug?: string };
+}) {
   const supabase = getServiceClient();
 
   // Graceful degradation, matching the rest of the app: without credentials
@@ -46,6 +107,14 @@ export default async function HirePage() {
 
   return (
     <>
+      {searchParams?.debug === "catalogue" && (
+        <CatalogueDebug
+          entries={catalogue.entries}
+          today={catalogue.today}
+          loaded={catalogueLoaded}
+        />
+      )}
+
       <header className="bar">
         <div className="wrap bar-in">
           <a className="crest" href="#top">
