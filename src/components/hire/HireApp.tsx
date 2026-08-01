@@ -922,10 +922,16 @@ function FlyerLightbox({ entry, onClose }: { entry: HireEntry; onClose: () => vo
           alt={`${entry.equipment.name} hire flyer with rate and specifications`}
           width={640}
           height={960}
-          sizes="(max-width: 600px) 92vw, 560px"
-          // The flyers differ in height (904–960px). Letting the browser use
-          // the natural ratio avoids distorting whichever one isn't 640×960.
-          style={{ width: "auto", height: "auto", maxHeight: "82vh", maxWidth: "100%" }}
+          // Mirrors `.lb-inner`'s `min(560px, 100%)` exactly — 100% being the
+          // viewport less the lightbox's 24px padding either side, which caps
+          // out at 560px on a 608px screen.
+          sizes="(max-width: 608px) calc(100vw - 48px), 560px"
+          // Sizing lives in `.lb-inner img` rather than here. It was inline,
+          // which meant the stylesheet's rules were overridden and the fix
+          // for the phone-sized flyer had to be made in two places to work.
+          // The flyers differ in height (904–960px), so the rule pairs
+          // `height: auto` with `object-fit: contain` — whichever one isn't
+          // 640×960 keeps its proportions.
         />
       </div>
     </div>
