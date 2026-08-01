@@ -270,6 +270,10 @@ export default function EquipmentManager({
                   {fmtHireMoney(e.bondCents)} bond
                   {e.changeoverDays > 0 &&
                     ` · ${e.changeoverDays}-day changeover`}
+                  {/* Called out only when it's MISSING. A flyer is the norm,
+                      so listing "has a flyer" seven times says nothing; the
+                      one item without one is the thing worth seeing. */}
+                  {!e.flyerPath && <span style={{ fontWeight: 600 }}> · no flyer</span>}
                 </div>
               </div>
 
@@ -391,9 +395,10 @@ function EquipmentForm({
 
         {draft.id ? (
           <Field label="Photo">
-            <PhotoUploader
+            <ImageUploader
               equipmentId={draft.id}
-              photoPath={draft.photoPath}
+              kind="photo"
+              path={draft.photoPath}
               onChange={(p) => set("photoPath", p)}
             />
           </Field>
@@ -401,6 +406,37 @@ function EquipmentForm({
           <Field label="Photo">
             <p style={{ ...s.muted, margin: 0, fontSize: 13 }}>
               Add the tool first, then edit it to upload a photo.
+            </p>
+          </Field>
+        )}
+
+        {/* The flyer had no field at all until now — it could only be set by
+            a migration, so a tool Thomas added himself could never have one
+            and the seeded six couldn't be changed without a deploy. It also
+            means the path is finally VISIBLE, which is what you want when a
+            card isn't showing its "View the flyer" link. */}
+        {draft.id ? (
+          <Field label="Flyer">
+            <ImageUploader
+              equipmentId={draft.id}
+              kind="flyer"
+              path={draft.flyerPath}
+              onChange={(p) => set("flyerPath", p)}
+            />
+            <small style={{ ...s.muted, fontSize: 12, display: "block", marginTop: 6 }}>
+              {draft.flyerPath ? (
+                <>
+                  Currently: <code>{draft.flyerPath}</code>
+                </>
+              ) : (
+                "No flyer — the card won't show a “View the flyer” link."
+              )}
+            </small>
+          </Field>
+        ) : (
+          <Field label="Flyer">
+            <p style={{ ...s.muted, margin: 0, fontSize: 13 }}>
+              Add the tool first, then edit it to upload a flyer.
             </p>
           </Field>
         )}
@@ -452,8 +488,33 @@ function EquipmentForm({
   );
 }
 
+/** What the uploader is called, per image kind, in Thomas's words. */
+const IMAGE_COPY = {
+  photo: {
+    noun: "photo",
+    add: "Upload a photo",
+    replace: "Replace photo",
+    remove: "Remove photo",
+    confirm: "Remove this photo?",
+    hint: "JPG, PNG or WebP, up to 10 MB. Saves as soon as it uploads.",
+    fit: "cover" as const,
+  },
+  flyer: {
+    noun: "flyer",
+    add: "Upload a flyer",
+    replace: "Replace flyer",
+    remove: "Remove flyer",
+    confirm: "Remove this flyer? The card's “View the flyer” link goes with it.",
+    // Contained, not cropped: a flyer is a tall spec sheet and the whole
+    // point of the thumbnail is to confirm it's the right one.
+    hint: "The spec sheet the card's “View the flyer” link opens. Portrait works best.",
+    fit: "contain" as const,
+  },
+} as const;
+
 /**
- * Upload / replace / remove the photo for one item.
+ * Upload / replace / remove one image for an item — the card photo or the
+ * flyer, chosen by `kind`.
  *
  * Saves immediately rather than waiting for the form's Save button. A file
  * upload is a multipart request to its own endpoint, so folding it into the
@@ -461,20 +522,24 @@ function EquipmentForm({
  * inventing a two-phase submit — and Thomas taking a photo on his phone
  * expects it to be there once the spinner stops.
  */
-function PhotoUploader({
+function ImageUploader({
   equipmentId,
-  photoPath,
+  kind,
+  path,
   onChange,
 }: {
   equipmentId: string;
-  photoPath: string;
+  kind: "photo" | "flyer";
+  path: string;
   onChange: (path: string) => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const preview = hirePhotoUrl(photoPath);
+  const copy = IMAGE_COPY[kind];
+  const preview = hirePhotoUrl(path);
+  const field = kind === "photo" ? "photoPath" : "flyerPath";
 
   async function upload(file: File) {
     setBusy(true);
@@ -482,30 +547,30 @@ function PhotoUploader({
     try {
       const body = new FormData();
       body.append("file", file);
-      const res = await fetch(`/api/admin/hire/equipment/${equipmentId}/photo`, {
+      const res = await fetch(`/api/admin/hire/equipment/${equipmentId}/${kind}`, {
         method: "POST",
         body,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.error ?? "That photo didn't upload. Try again.");
+        setError(data?.error ?? `That ${copy.noun} didn't upload. Try again.`);
         return;
       }
-      onChange(data.photoPath ?? "");
+      onChange(data[field] ?? "");
       router.refresh();
     } catch {
-      setError("That photo didn't upload — check your connection and try again.");
+      setError(`That ${copy.noun} didn't upload — check your connection and try again.`);
     } finally {
       setBusy(false);
     }
   }
 
   async function clear() {
-    if (!window.confirm("Remove this photo?")) return;
+    if (!window.confirm(copy.confirm)) return;
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/hire/equipment/${equipmentId}/photo`, {
+      const res = await fetch(`/api/admin/hire/equipment/${equipmentId}/${kind}`, {
         method: "DELETE",
       });
       const data = await res.json().catch(() => ({}));
@@ -536,7 +601,7 @@ function PhotoUploader({
           }}
         >
           {preview && (
-            <Image src={preview} alt="" fill sizes="72px" style={{ objectFit: "cover" }} />
+            <Image src={preview} alt="" fill sizes="72px" style={{ objectFit: copy.fit }} />
           )}
         </div>
 
@@ -552,7 +617,7 @@ function PhotoUploader({
               opacity: busy ? 0.6 : 1,
             }}
           >
-            {busy ? "Uploading…" : preview ? "Replace photo" : "Upload a photo"}
+            {busy ? "Uploading…" : preview ? copy.replace : copy.add}
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -575,14 +640,14 @@ function PhotoUploader({
 
           {preview && (
             <button type="button" style={s.actionButton("danger")} disabled={busy} onClick={clear}>
-              Remove photo
+              {copy.remove}
             </button>
           )}
         </div>
       </div>
 
       <small style={{ ...s.muted, fontSize: 12, display: "block", marginTop: 6 }}>
-        JPG, PNG or WebP, up to 10 MB. Saves as soon as it uploads.
+        {copy.hint}
       </small>
 
       {error && (
