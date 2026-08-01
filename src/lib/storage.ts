@@ -23,7 +23,7 @@ export const HIRE_PHOTOS_BUCKET = "hire-photos";
  *
  * Same trick, same reason as the `?v=` on the walker images in HomeHero.
  */
-export const HIRE_ASSET_VERSION = "4";
+export const HIRE_ASSET_VERSION = "5";
 
 /**
  * Public URL for an uploaded hire photo.
