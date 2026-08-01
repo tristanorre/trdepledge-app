@@ -21,9 +21,16 @@ export const HIRE_PHOTOS_BUCKET = "hire-photos";
  * photos don't need it: their storage keys already carry a timestamp, so a
  * new upload is a new URL on its own.
  *
+ * Bump it for a file that was ADDED late, too — not only one that changed.
+ * A commit once deleted lawn-mower.webp while the database still pointed at
+ * it, so the URL served a 404 for a while; a 404 is a cacheable response,
+ * and the caches went on serving it after the file came back. Re-adding a
+ * file behind a URL that has already answered 404 is the same problem as
+ * replacing one, and has the same fix.
+ *
  * Same trick, same reason as the `?v=` on the walker images in HomeHero.
  */
-export const HIRE_ASSET_VERSION = "5";
+export const HIRE_ASSET_VERSION = "6";
 
 /**
  * Public URL for an uploaded hire photo.
