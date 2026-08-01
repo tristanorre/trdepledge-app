@@ -28,8 +28,8 @@
  *      flyer number, which is probably right — "probably" being the reason
  *      this is still a checklist item.
  *
- * The lawn mower's daily rate is also still unconfirmed
- * (UNCONFIRMED_RATE_SLUGS), and the page states it as fact.
+ * Every rate and bond on the page is now confirmed, so that half of the
+ * checklist is done: the figures the page states as fact are facts.
  *
  * FLIP THIS TO `true` AT LAUNCH. It also turns the home page hero tile from
  * a COMING SOON teaser into a live link, so one switch opens both doors.
@@ -103,12 +103,18 @@ export type BlockReason = (typeof BLOCK_REASONS)[number];
 export const BONDS_CONFIRMED = true;
 
 /**
- * Lawn mower daily rate. // UNCONFIRMED — $40 was invented.
- * The five flyer rates (mixer $50, digger $80, hammer $80, roller $30,
- * packer $80) are confirmed. Seeded in the database; listed here so the
- * unconfirmed one is visible alongside the rest of the checklist.
+ * Slugs whose daily rate Thomas hasn't signed off.
+ *
+ * EMPTY, and that's the point — every rate on the floor is now confirmed.
+ * The lawn mower was the last holdout ($40 invented for the prototypes,
+ * settled at $50 in migration 0036); the other five come from the flyers.
+ *
+ * Kept rather than deleted because it's the mechanism Doug and the UI read
+ * to decide whether to caveat a figure. Add a slug here the moment a rate
+ * becomes a guess again — a new item priced off the top of someone's head,
+ * say — and the caveat comes back on its own.
  */
-export const UNCONFIRMED_RATE_SLUGS: readonly string[] = ["lawn-mower"];
+export const UNCONFIRMED_RATE_SLUGS: readonly string[] = [];
 
 /**
  * Items whose photo is a cut-out rather than a product shot, and so render
