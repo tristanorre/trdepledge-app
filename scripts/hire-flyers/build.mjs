@@ -47,11 +47,9 @@ const FLYERS = {
     title: ["Lawn", "Mower"],
     pill: "Catcher included · Easy to use · Ready to go",
     blurb: "Catcher mower for a block that has got away from you. Goes out fuelled and sharpened.",
+    // A real photo of the machine now, already debranded and cut out by
+    // scripts/hire-flyers/debrand-lawn-mower.py — so no white to key here.
     art: "lawn-mower.webp",
-    // The only picture of this mower is an illustration on a white ground
-    // with the figure's boot in frame. Knocked out and trimmed at render.
-    keyOutWhite: true,
-    cropLeft: 58,
     artStyle: "max-width:96%;max-height:330px;object-fit:contain;filter:drop-shadow(0 18px 26px rgba(0,0,0,.75))",
     feats: [
       { icon: "bag", h: "Catcher included", p: "Bag the clippings or drop them, your call." },

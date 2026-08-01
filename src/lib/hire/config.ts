@@ -117,12 +117,14 @@ export const BONDS_CONFIRMED = true;
 export const UNCONFIRMED_RATE_SLUGS: readonly string[] = [];
 
 /**
- * Items whose photo is a cut-out rather than a product shot, and so render
- * contained-with-a-shadow instead of cropped to fill the card.
+ * Items whose photo has a transparent background, and so render contained
+ * with a shadow rather than cropped to fill the card.
  *
- * // UNCONFIRMED — the lawn mower's image is cropped out of a Thomas
- * cartoon. It's the only non-photographic item and it shows. Remove the
- * slug from this list once Thomas supplies a real photo.
+ * The lawn mower is here because its shot is cut out, NOT because it's a
+ * placeholder — it used to be a crop of a Thomas cartoon and is now a real
+ * photo of the machine, debranded and keyed by
+ * scripts/hire-flyers/debrand-lawn-mower.py. Cropping a cut-out to fill
+ * would slice the handle off, which is the whole reason this list exists.
  */
 export const CUTOUT_PHOTO_SLUGS: readonly string[] = ["lawn-mower"];
 
