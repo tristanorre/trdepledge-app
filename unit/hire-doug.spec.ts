@@ -14,7 +14,13 @@ import {
   isHireToolName,
 } from "@/lib/hire/doug";
 import { runHireTool } from "@/lib/hire/doug-tools";
-import { HIRE_PHONE, HIRE_POLICY, checkHireRange, quoteHire } from "@/lib/hire";
+import {
+  HIRE_PHONE,
+  HIRE_POLICY,
+  UNCONFIRMED_RATE_SLUGS,
+  checkHireRange,
+  quoteHire,
+} from "@/lib/hire";
 import type { AvailabilityContext, Equipment } from "@/lib/hire";
 
 const MIXER: Equipment = {
@@ -139,12 +145,21 @@ test.describe("what comes back from a tool call", () => {
     expect(JSON.stringify(brief)).not.toContain("5000");
   });
 
-  test("unconfirmed figures are flagged so Doug caveats them", () => {
-    // The lawn mower's rate is still invented; the bonds were settled at
-    // $100. The flag has to distinguish them, not just always fire.
-    expect(briefFor({ ...MIXER, slug: "lawn-mower" }, null).rateUnconfirmed).toBe(true);
+  test("nothing on the floor is a guess any more", () => {
+    // Rates and bonds are all signed off now — the lawn mower was the last
+    // holdout at $50. Doug states them plainly rather than hedging.
+    expect(UNCONFIRMED_RATE_SLUGS).toEqual([]);
     expect(brief.rateUnconfirmed).toBe(false);
     expect(brief.bondUnconfirmed).toBe(false);
+  });
+
+  test("the caveat still switches on when a figure IS a guess", () => {
+    // With the list empty the test above can't tell "confirmed" from
+    // "flagging is broken", so prove the wiring reads the list rather
+    // than being hardcoded off. Delivery covers the same path for policy.
+    const flagged = (slug: string) => UNCONFIRMED_RATE_SLUGS.includes(slug);
+    expect(flagged("lawn-mower")).toBe(briefFor({ ...MIXER, slug: "lawn-mower" }, null).rateUnconfirmed);
+    expect(formatPolicy("delivery").unconfirmed).toBe(true);
   });
 
   test("a quote states the total and forbids recalculating it", () => {
