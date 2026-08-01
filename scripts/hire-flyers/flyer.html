@@ -1,0 +1,271 @@
+<!doctype html>
+<!--
+  DIY Hire flyer template. Rendered by build.mjs — not a page of the app.
+
+  The __FONT_*__ tokens are replaced at render time with file:// paths to
+  the woff2 files next/font emits into .next, so a flyer is set in exactly
+  the faces the hire page uses rather than a lookalike. See build.mjs.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@font-face{font-family:Anton;font-weight:400;src:url(__FONT_ANTON__) format('woff2');}
+@font-face{font-family:BarlowCond;font-weight:700;src:url(__FONT_COND_700__) format('woff2');}
+@font-face{font-family:BarlowCond;font-weight:600;src:url(__FONT_COND_600__) format('woff2');}
+@font-face{font-family:Barlow;font-weight:400;src:url(__FONT_BARLOW_400__) format('woff2');}
+@font-face{font-family:Barlow;font-weight:600;src:url(__FONT_BARLOW_600__) format('woff2');}
+
+:root{ --lime:#a3d419; --yellow:#ffd400; }
+*{box-sizing:border-box;margin:0;padding:0;}
+body{width:640px;height:960px;overflow:hidden;background:#000;}
+
+.flyer{
+  position:relative;width:640px;height:960px;
+  background:radial-gradient(120% 80% at 70% 22%, #1c1c1c 0%, #0d0d0d 55%, #060606 100%);
+  border:3px solid var(--lime);
+  padding:14px 18px 0;
+  font-family:Barlow, sans-serif;
+  color:#fff;
+}
+/* Faint speckle, matching the hire page's own texture treatment. */
+.flyer::before{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size:7px 7px;
+}
+.flyer > *{position:relative;}
+
+/* ── head ─────────────────────────────────────────────── */
+.head{display:flex;gap:14px;align-items:flex-start;}
+.crest{width:192px;flex:0 0 192px;margin-top:-2px;}
+.crest img{width:100%;display:block;}
+.title{padding-top:10px;flex:1;}
+.title h1{
+  font-family:Anton, sans-serif;font-weight:400;
+  font-size:56px;line-height:.88;letter-spacing:.004em;text-transform:uppercase;
+}
+.title h1 .a{color:#fff;display:block;}
+.title h1 .b{color:var(--lime);display:block;}
+.pill{
+  display:inline-block;margin-top:10px;background:var(--lime);color:#0b0b0b;
+  font-family:BarlowCond, sans-serif;font-weight:700;
+  font-size:17px;letter-spacing:.055em;text-transform:uppercase;padding:4px 12px 3px;
+}
+.blurb{margin-top:9px;font-size:16.5px;line-height:1.34;color:#e8e8e8;max-width:365px;}
+
+/* ── rate + features on the left, art on the right ────── */
+.mid{display:flex;gap:14px;margin-top:11px;}
+.left{width:206px;flex:0 0 206px;}
+.rate-h{
+  background:var(--lime);color:#0b0b0b;text-align:center;
+  font-family:BarlowCond, sans-serif;font-weight:700;
+  font-size:23px;letter-spacing:.06em;text-transform:uppercase;padding:5px 0 3px;
+}
+.rate-b{background:var(--yellow);text-align:center;padding:6px 0 10px;}
+.rate-b .amt{
+  font-family:Anton, sans-serif;color:#0b0b0b;
+  font-size:66px;line-height:.82;letter-spacing:-.01em;
+}
+.rate-b .per{
+  display:inline-block;margin-top:9px;background:#0b0b0b;color:#fff;
+  font-family:BarlowCond, sans-serif;font-weight:700;
+  font-size:19px;letter-spacing:.09em;padding:3px 20px 2px;
+}
+.feats{margin-top:11px;}
+.feat{display:flex;gap:10px;padding:6px 0;border-top:1px solid rgba(255,255,255,.10);}
+.feat:first-child{border-top:0;}
+.feat .ico{flex:0 0 26px;height:26px;margin-top:1px;}
+.feat h3{
+  font-family:BarlowCond, sans-serif;font-weight:700;color:var(--lime);
+  font-size:15.5px;letter-spacing:.045em;text-transform:uppercase;line-height:1.1;
+}
+.feat p{font-size:13px;line-height:1.26;color:#bdbdbd;margin-top:2px;}
+.art{flex:1;position:relative;display:flex;align-items:center;justify-content:center;}
+.art img{max-width:100%;max-height:100%;object-fit:contain;
+  filter:drop-shadow(0 18px 26px rgba(0,0,0,.75));}
+
+/* ── uses band ────────────────────────────────────────── */
+.uses-h{display:flex;align-items:center;gap:12px;margin:11px 0 8px;}
+.uses-h .rule{flex:1;height:2px;background:rgba(163,212,25,.35);}
+.uses-h span{
+  font-family:Anton, sans-serif;color:var(--lime);
+  font-size:23px;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;
+}
+.uses{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;}
+.use{
+  background:rgba(255,255,255,.035);border:1px solid rgba(163,212,25,.22);
+  border-radius:6px;padding:9px 8px 10px;text-align:center;
+}
+.use .ico{height:28px;margin:0 auto 6px;display:block;}
+.use h4{
+  font-family:BarlowCond, sans-serif;font-weight:700;color:#fff;
+  font-size:13.5px;letter-spacing:.04em;text-transform:uppercase;line-height:1.08;
+}
+.use p{font-size:11.2px;line-height:1.22;color:#a8a8a8;margin-top:3px;}
+
+/* ── foot ─────────────────────────────────────────────── */
+.foot{display:flex;gap:14px;align-items:stretch;margin-top:11px;}
+.easy{
+  background:var(--lime);color:#0b0b0b;border-radius:8px;
+  padding:9px 14px 10px;display:flex;gap:11px;align-items:center;width:268px;
+}
+.easy .lock{flex:0 0 34px;}
+.easy h4{
+  font-family:BarlowCond, sans-serif;font-weight:700;
+  font-size:19px;letter-spacing:.05em;text-transform:uppercase;
+}
+.easy li{font-size:12.8px;line-height:1.42;list-style:none;font-weight:600;}
+.help{flex:1;text-align:center;padding-top:2px;}
+.help h4{
+  font-family:Anton, sans-serif;color:var(--lime);
+  font-size:21px;letter-spacing:.02em;text-transform:uppercase;
+}
+.help .sub{font-size:12.4px;color:#d8d8d8;margin-top:1px;letter-spacing:.02em;}
+.help .tel{font-family:Anton, sans-serif;color:#fff;font-size:33px;letter-spacing:.01em;margin-top:3px;}
+.strap{
+  text-align:center;color:var(--lime);
+  font-family:BarlowCond, sans-serif;font-weight:700;
+  font-size:12.5px;letter-spacing:.075em;text-transform:uppercase;margin-top:7px;
+}
+.disc{
+  text-align:center;color:#8a8a8a;font-size:10px;line-height:1.25;
+  margin-top:5px;padding-bottom:7px;
+}
+</style>
+</head>
+<body>
+<div class="flyer">
+  <div class="head">
+    <div class="crest"><img id="crest" src="" alt=""></div>
+    <div class="title">
+      <h1><span class="a" id="t1"></span><span class="b" id="t2"></span></h1>
+      <div class="pill" id="pill"></div>
+      <p class="blurb" id="blurb"></p>
+    </div>
+  </div>
+
+  <div class="mid">
+    <div class="left">
+      <div class="rate-h">Daily Rate</div>
+      <div class="rate-b">
+        <div class="amt" id="rate"></div>
+        <div class="per">Per Day</div>
+      </div>
+      <div class="feats" id="feats"></div>
+    </div>
+    <div class="art"><img id="art" src="" alt=""></div>
+  </div>
+
+  <div class="uses-h"><span id="usesTitle">What it can be used for</span><i class="rule"></i></div>
+  <div class="uses" id="uses"></div>
+
+  <div class="foot">
+    <div class="easy">
+      <svg class="lock" viewBox="0 0 24 24" fill="none" stroke="#0b0b0b" stroke-width="2">
+        <rect x="4" y="10" width="16" height="11" rx="2" fill="#0b0b0b" stroke="none"/>
+        <path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+      </svg>
+      <div>
+        <h4>Easy to hire</h4>
+        <ul>
+          <li>&#10003; Pick up in Wallaroo SA</li>
+          <li>&#10003; Flexible hire periods</li>
+          <li>&#10003; Affordable rates</li>
+        </ul>
+      </div>
+    </div>
+    <div class="help">
+      <h4>Need help choosing?</h4>
+      <div class="sub">Call us &ndash; we&rsquo;re happy to help!</div>
+      <div class="tel" id="tel"></div>
+    </div>
+  </div>
+  <div class="strap">TRDG DIY Hire &ndash; Local, Reliable &amp; Ready</div>
+  <div class="disc">Images are for illustrative purposes only. Actual equipment may vary in brand and appearance. Hire subject to availability.</div>
+</div>
+
+<script>
+// Inline SVG rather than an icon font: one less asset to lose track of,
+// and they inherit the lime straight from the stylesheet.
+const ICONS = {
+  shield:'<path d="M12 2 4 5.5v6c0 5.2 3.4 9.6 8 10.5 4.6-.9 8-5.3 8-10.5v-6L12 2Z"/><path d="m8.5 12 2.5 2.5 4.5-4.5" stroke="#0b0b0b" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  engine:'<rect x="3" y="9" width="12" height="8" rx="1.5"/><rect x="15" y="11" width="6" height="4" rx="1"/><rect x="6" y="5" width="6" height="4" rx="1"/>',
+  deck:'<rect x="2" y="8" width="20" height="9" rx="2"/><path d="M6 17v3M18 17v3" stroke="currentColor" stroke-width="2"/>',
+  height:'<path d="M12 3v18M7 7l5-4 5 4M7 17l5 4 5-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5.4l3.4 2" stroke="#0b0b0b" stroke-width="2.2" fill="none" stroke-linecap="round"/>',
+  grass:'<path d="M4 21c0-5 2-8 3-10 0 4 1 7 2 10M11 21c-1-6 1-10 2-12 1 4 1 8 1 12M18 21c0-5 1-8 2-9 0 3 0 6 0 9"/>',
+  leaf:'<path d="M20 4C11 4 5 8 5 15c0 2 .6 3.6 1.4 4.8C9 14 13 11 18 10c-4 2-7 5-9 11 1 .6 2.4 1 4 1 6 0 8-6 7-18Z"/>',
+  bag:'<path d="M5 8h14l-1.2 12.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/>',
+  slope:'<path d="M3 20 21 6v14H3Z"/>',
+  scrub:'<path d="M7 21c-2-4-1-8 1-10 0 3 1 5 2 7M14 21c-2-5 0-10 2-12 1 5 1 9 0 12"/><path d="M2 21h20" stroke="currentColor" stroke-width="2"/>',
+  roll:'<rect x="4" y="10" width="14" height="9" rx="4.5"/><path d="M18 14h3M11 10V5l6-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  path:'<path d="M9 21 7 3h4l2 18H9Z"/><path d="M3 21h18" stroke="currentColor" stroke-width="2"/>',
+  house:'<path d="M12 3 2 11h3v10h6v-6h2v6h6V11h3L12 3Z"/>',
+  plus:'<path d="M12 4v16M4 12h16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'
+};
+const svg = (name, size) =>
+  '<svg class="ico" viewBox="0 0 24 24" fill="var(--lime)" width="'+size+'" height="'+size+'">'+ICONS[name]+'</svg>';
+
+/**
+ * Knock a near-white studio background out of an image and trim the result,
+ * so a cut-out illustration sits on the flyer's dark ground instead of in a
+ * white box. Done here rather than as a committed derived asset: the source
+ * stays the single copy, and there's no second file to drift out of step.
+ */
+function keyOutWhite(img, cropLeft) {
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth - cropLeft;
+  c.height = img.naturalHeight;
+  const g = c.getContext('2d');
+  g.drawImage(img, -cropLeft, 0);
+  const d = g.getImageData(0, 0, c.width, c.height);
+  const p = d.data;
+  let minX = c.width, minY = c.height, maxX = 0, maxY = 0;
+  for (let i = 0; i < p.length; i += 4) {
+    if (p[i] > 238 && p[i+1] > 238 && p[i+2] > 238) { p[i+3] = 0; continue; }
+    if (p[i+3] === 0) continue;
+    const px = (i / 4) % c.width, py = Math.floor((i / 4) / c.width);
+    if (px < minX) minX = px; if (px > maxX) maxX = px;
+    if (py < minY) minY = py; if (py > maxY) maxY = py;
+  }
+  g.putImageData(d, 0, 0);
+  const t = document.createElement('canvas');
+  t.width = maxX - minX + 1; t.height = maxY - minY + 1;
+  t.getContext('2d').drawImage(c, -minX, -minY);
+  return t.toDataURL('image/png');
+}
+
+window.render = async function (d) {
+  document.getElementById('t1').textContent = d.title[0];
+  document.getElementById('t2').textContent = d.title[1];
+  document.getElementById('pill').textContent = d.pill;
+  document.getElementById('blurb').textContent = d.blurb;
+  document.getElementById('rate').textContent = d.rate;
+  document.getElementById('tel').textContent = d.phone;
+  document.getElementById('crest').src = d.crest;
+  document.getElementById('usesTitle').textContent = d.usesTitle || 'What it can be used for';
+
+  document.getElementById('feats').innerHTML = d.feats.map(f =>
+    '<div class="feat">' + svg(f.icon, 26) + '<div><h3>' + f.h + '</h3><p>' + f.p + '</p></div></div>'
+  ).join('');
+  document.getElementById('uses').innerHTML = d.uses.map(u =>
+    '<div class="use">' + svg(u.icon, 28) + '<h4>' + u.h + '</h4><p>' + u.p + '</p></div>'
+  ).join('');
+
+  const art = document.getElementById('art');
+  if (d.artStyle) art.setAttribute('style', d.artStyle);
+  await new Promise((resolve, reject) => {
+    const src = new Image();
+    src.onload = () => {
+      art.src = d.keyOutWhite ? keyOutWhite(src, d.cropLeft || 0) : d.art;
+      art.onload = resolve;
+      art.onerror = () => reject(new Error('art failed to render'));
+    };
+    src.onerror = () => reject(new Error('art failed to load: ' + d.art));
+    src.src = d.art;
+  });
+};
+</script>
+</body>
+</html>

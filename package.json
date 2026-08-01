@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "extract-images": "node scripts/extract-images.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
+    "hire-flyers": "node scripts/hire-flyers/build.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test:unit": "playwright test -c playwright.unit.config.ts",
     "test:e2e": "playwright test",
