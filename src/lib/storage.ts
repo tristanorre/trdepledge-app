@@ -9,6 +9,23 @@ export const ASSET_IMAGES_BUCKET = "asset-images";
 export const HIRE_PHOTOS_BUCKET = "hire-photos";
 
 /**
+ * Cache-buster for the hire images that ship in `public/`.
+ *
+ * Those URLs are deliberately stable so browsers and the CDN can hold on to
+ * them — see the note above. The catch is that replacing a photo means
+ * writing new bytes behind an unchanged URL, and every one of those caches
+ * then keeps serving the old picture, exactly as instructed. It took a
+ * round of "why does the site still show the orange digger" to notice.
+ *
+ * BUMP THIS whenever a file in public/hire/ is replaced in place. Uploaded
+ * photos don't need it: their storage keys already carry a timestamp, so a
+ * new upload is a new URL on its own.
+ *
+ * Same trick, same reason as the `?v=` on the walker images in HomeHero.
+ */
+export const HIRE_ASSET_VERSION = "3";
+
+/**
  * Public URL for an uploaded hire photo.
  *
  * `equipment.photo_path` holds one of two things, and both must keep
@@ -24,7 +41,9 @@ export const HIRE_PHOTOS_BUCKET = "hire-photos";
  */
 export function hirePhotoUrl(path: string | null | undefined): string | null {
   if (!path) return null;
-  if (path.startsWith("/") || path.startsWith("http")) return path;
+  // Versioned, because these are replaced in place — see HIRE_ASSET_VERSION.
+  if (path.startsWith("/")) return `${path}?v=${HIRE_ASSET_VERSION}`;
+  if (path.startsWith("http")) return path;
 
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
   if (!base) return null;

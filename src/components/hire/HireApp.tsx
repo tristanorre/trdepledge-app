@@ -917,7 +917,9 @@ function FlyerLightbox({ entry, onClose }: { entry: HireEntry; onClose: () => vo
           Close
         </button>
         <Image
-          src={entry.equipment.flyerPath!}
+          // Through hirePhotoUrl for the cache-busting version, the same as
+          // the card photos — a replaced flyer is stale otherwise.
+          src={hirePhotoUrl(entry.equipment.flyerPath)!}
           alt={`${entry.equipment.name} hire flyer with rate and specifications`}
           width={640}
           height={960}
