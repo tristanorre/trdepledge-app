@@ -533,7 +533,7 @@ function thumbClass(equipment: Equipment): string {
   return isCutout(equipment) ? "thumb cutout" : "thumb";
 }
 
-/** Equipment photo, filling a sized container. Cut-outs contain rather than crop. */
+/** Equipment photo. Always contained — a card must show the whole tool. */
 function ToolImage({ equipment, sizes }: { equipment: Equipment; sizes: string }) {
   // photo_path is either a file in public/ (the original seed) or a key in
   // the hire-photos bucket (uploaded by Thomas). Both resolve here.
@@ -545,11 +545,10 @@ function ToolImage({ equipment, sizes }: { equipment: Equipment; sizes: string }
       alt={`${equipment.name} available for hire`}
       fill
       sizes={sizes}
-      style={
-        isCutout(equipment)
-          ? { objectFit: "contain", padding: 4 }
-          : { objectFit: "cover" }
-      }
+      // Contained for every item, cut-out or photograph. Cropping to fill
+      // takes the top off a square product shot, and half a cement mixer
+      // is worse than a letterboxed one.
+      style={{ objectFit: "contain", padding: 4 }}
     />
   );
 }

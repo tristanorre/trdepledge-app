@@ -48,13 +48,13 @@ PANELS = {
 # the headings and the feature lists — a card showing half a sentence of
 # flyer copy is exactly the defect this is fixing.
 PRODUCT = {
-    "cement-mixer": (168, 163, 398, 398),
+    "cement-mixer": (180, 172, 398, 398),
     "post-hole-digger": (185, 165, 389, 400),
     # Left edge starts past the DAILY RATE block, which sits at x<140
     # on this panel; the feature list below starts at y>305.
-    "demolition-hammer": (152, 180, 403, 302),
+    "demolition-hammer": (163, 188, 403, 302),
     "lawn-roller": (138, 194, 362, 386),
-    "deutscher-slasher": (158, 193, 385, 365),
+    "deutscher-slasher": (168, 201, 385, 365),
 }
 
 # Parts of a machine that disappear against the flyer's black ground, and
