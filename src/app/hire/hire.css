@@ -1142,16 +1142,34 @@
 .hire-page .lb[hidden] {
   display: none;
 }
+/* A DEFINITE width, not a max-width.
+ *
+ * This was `max-width` and the flyer came out about 70px wide on an iPhone —
+ * exactly the width of the Close button above it. With only a max-width the
+ * box is shrink-to-fit, so its width comes from its contents; the image's
+ * contribution is its own `max-width: 100%`, which is a percentage of the
+ * width being calculated. WebKit resolves that circle by treating the image
+ * as contributing nothing, leaving the Close button as the widest thing in
+ * the column and the flyer squeezed to match. Chrome guesses more
+ * generously, which is why this looked fine on a desktop.
+ *
+ * `100%` here is the grid content box — `.lb`'s padding is already taken
+ * off — so the flyer can't collide with the edge of the screen either.
+ */
 .hire-page .lb-inner {
-  max-width: min(560px, 92vw);
+  width: min(560px, 100%);
   max-height: 92vh;
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 .hire-page .lb-inner img {
+  width: 100%;
+  height: auto;
+  /* Short landscape screens clamp on height instead; `contain` keeps the
+     flyer's proportions rather than squashing it into the gap. */
   max-height: 82vh;
-  width: auto;
+  object-fit: contain;
   border: 2px solid var(--line);
   border-radius: var(--r);
 }
