@@ -534,24 +534,29 @@
 .hire-page .kit:hover {
   border-color: var(--lime-dim);
 }
+/* Every card shows the WHOLE tool.
+   This used to crop to fill (object-fit: cover), which looked tidy on a
+   wide photo and lopped the drum off a square one — the art box is 184px
+   tall and two to three times as wide, so anything near-square lost its
+   top and bottom. Containing instead means a card may letterbox, but a
+   customer never sees half a machine. The panel colour behind it is the
+   same dark the photos are shot on, so the bands read as background
+   rather than as a gap. */
 .hire-page .kit-art {
   position: relative;
   height: 184px;
-  background: #101010;
+  display: grid;
+  place-items: center;
+  /* #040404, not --panel-2. The product shots are cut from the flyers and
+     carry their near-black ground, measured at #01-#06 across all of them.
+     Against the lighter panel the photo showed as a rectangle floating in
+     the card; matched, the letterboxing disappears and the tool reads as
+     sitting on the card itself. */
+  background: #040404;
+  padding: 8px;
   overflow: hidden;
 }
 .hire-page .kit-art > img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.hire-page .kit-art.cutout {
-  display: grid;
-  place-items: center;
-  background: var(--panel-2);
-  padding: 10px;
-}
-.hire-page .kit-art.cutout > img {
   width: auto;
   height: 100%;
   object-fit: contain;
