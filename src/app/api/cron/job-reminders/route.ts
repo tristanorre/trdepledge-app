@@ -4,6 +4,7 @@ import { sendSms, normaliseAuPhone } from "@/lib/twilio";
 import { sendPush } from "@/lib/onesignal";
 import { sms } from "@/lib/sms-templates";
 import { addDaysISO, todayISO } from "@/lib/dates";
+import { runAndReport } from "@/lib/health";
 import type { Job } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -106,12 +107,32 @@ export async function GET(req: Request) {
     }
   }
 
+  // Health checks piggyback on this cron. Vercel Hobby allows two cron
+  // entries and both are already used, so there is no slot for a monitor
+  // of its own — and it does not need one. Once a day is the right
+  // cadence for "has anything quietly stopped working", and running it
+  // here means the monitor cannot be the thing that fails to be scheduled.
+  //
+  // Deliberately LAST and awaited-but-guarded: the reminders above are the
+  // job people depend on, so the monitor must never delay or break them.
+  // Any throw is caught and logged; a broken monitor degrades to no
+  // monitor, never to a broken cron.
+  let healthSummary: string | null = null;
+  try {
+    const results = await runAndReport(supabase, { notify: true });
+    const bad = results.filter((r) => r.status !== "ok");
+    healthSummary = bad.length === 0 ? "ok" : bad.map((b) => `${b.key}:${b.status}`).join(",");
+  } catch (e) {
+    console.error("[cron/job-reminders] health checks failed", e);
+    healthSummary = "checks-errored";
+  }
+
   // Persist a summary on the cron_runs row for easy after-the-fact
   // inspection ("did Tuesday's run actually send anything?"). Best
   // effort — failure here doesn't undo the work above.
   await supabase
     .from("cron_runs")
-    .update({ detail: { jobs: jobs.length, pushes_dispatched: pushSent, sms_dispatched: smsSent } })
+    .update({ detail: { jobs: jobs.length, pushes_dispatched: pushSent, sms_dispatched: smsSent, health: healthSummary } })
     .eq("job_name", cronJobName)
     .eq("run_date", today);
 
@@ -121,6 +142,7 @@ export async function GET(req: Request) {
     jobs: jobs.length,
     pushes_dispatched: pushSent,
     sms_dispatched: smsSent,
+    health: healthSummary,
   });
 }
 
