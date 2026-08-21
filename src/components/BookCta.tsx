@@ -14,7 +14,11 @@ type Props = {
   primaryLabel?: string;
 };
 
-const PAYMENT_METHODS = ["Visa", "Mastercard", "Apple Pay", "Google Pay", "Afterpay", "EFTPOS"];
+// Afterpay removed — confirmed with Thomas that it is not accepted.
+// Advertising a payment method the business cannot take is worse than
+// listing one fewer: a customer who chooses on that basis finds out at
+// the point of paying.
+const PAYMENT_METHODS = ["Visa", "Mastercard", "Apple Pay", "Google Pay", "EFTPOS"];
 
 export default function BookCta({
   eyebrow = "Get Started Today",
@@ -25,9 +29,14 @@ export default function BookCta({
       Garden?
     </>
   ),
-  lead = "Book online or give Thomas a call. We'll get your garden sorted — professionally, reliably, and at a fair price.",
+  // "Book online" promised a booking system that does not exist yet —
+  // both this CTA and every caller point at the contact form, which takes
+  // an enquiry and starts a quote. The wording now matches what actually
+  // happens. Revisit when the hire booking flow goes public: that one IS
+  // a real online booking, and this copy can say so then.
+  lead = "Send Thomas a message or give him a call. We'll get your garden sorted — professionally, reliably, and at a fair price.",
   primaryHref = "/contact",
-  primaryLabel = "Book Online Now →",
+  primaryLabel = "Get a Free Quote →",
 }: Props) {
   return (
     <section className="book-section">

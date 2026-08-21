@@ -82,7 +82,7 @@ export default async function GalleryPage() {
         eyebrow="Your Garden Next?"
         title={<>Want a Yard That <em>Turns</em><br />Heads?</>}
         lead="Get in touch and we'll transform your garden — clean, neat, and done properly."
-        primaryLabel="Book a Job →"
+        primaryLabel="Get a Free Quote →"
       />
     </>
   );

@@ -99,7 +99,7 @@ export default function ContactPage({
               <Reveal delay={3} style={{ background: "var(--off)", borderRadius: 16, padding: 24, marginTop: 20 }}>
                 <div style={{ fontWeight: 800, fontSize: 15, color: "var(--navy)", marginBottom: 12 }}>We Accept</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {["Visa", "Mastercard", "Apple Pay", "Google Pay", "Afterpay", "EFTPOS", "Bank Transfer"].map((p) => (
+                  {["Visa", "Mastercard", "Apple Pay", "Google Pay", "EFTPOS", "Bank Transfer"].map((p) => (
                     <span key={p} className="payment-pill" style={{ background: "var(--navy)", color: "white" }}>{p}</span>
                   ))}
                 </div>

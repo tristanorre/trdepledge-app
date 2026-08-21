@@ -195,7 +195,7 @@ export default function HomePage() {
                   <div className="whyus-point-icon">💰</div>
                   <div>
                     <div className="whyus-point-title">Transparent Pricing</div>
-                    <div className="whyus-point-desc">Clear, published rates with no hidden fees. Contact us for a quote — we provide honest, transparent pricing tailored to your job.</div>
+                    <div className="whyus-point-desc">An honest quote up front, with no hidden fees and no surprises on the invoice. You know what the job costs before we start.</div>
                   </div>
                 </Reveal>
                 <Reveal delay={3} className="whyus-point">
@@ -213,9 +213,9 @@ export default function HomePage() {
                 <div className="trust-item"><div className="trust-check">✓</div> Police-checked, trusted team</div>
                 <div className="trust-item"><div className="trust-check">✓</div> NDIS & Aged Care approved</div>
                 <div className="trust-item"><div className="trust-check">✓</div> Wallaroo, Kadina & Moonta</div>
-                <div className="trust-item"><div className="trust-check">✓</div> Online booking available</div>
+                <div className="trust-item"><div className="trust-check">✓</div> Free quotes, no obligation</div>
                 <div className="trust-item"><div className="trust-check">✓</div> All major payments accepted</div>
-                <Link href="/contact" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 24 }}>Book a Job Online →</Link>
+                <Link href="/contact" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 24 }}>Get a Free Quote →</Link>
               </Reveal>
               <Reveal delay={1} className="contact-card">
                 <div className="contact-card-title">Prefer to Call?</div>
