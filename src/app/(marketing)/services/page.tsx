@@ -32,7 +32,7 @@ const SERVICES: Service[] = [
     icon: "🌱",
     name: "Lawn mowing & edging",
     desc: "Regular mowing and crisp edges. Quick visits to keep your lawn looking sharp through every season.",
-    enquiry: "Garden Maintenance",
+    enquiry: "Lawn Mowing & Edging",
   },
   {
     image: "/images/Services/service-garden-maintenance.png",

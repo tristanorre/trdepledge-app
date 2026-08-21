@@ -49,7 +49,7 @@ export default function Footer() {
                 points at /contact?service=… via the existing pattern
                 so the dropdown pre-fills. */}
             <ul className="footer-links">
-              <li><Link href="/contact?service=Garden%20Maintenance">Lawn mowing & edging</Link></li>
+              <li><Link href="/contact?service=Lawn%20Mowing%20%26%20Edging">Lawn mowing & edging</Link></li>
               <li><Link href="/contact?service=Garden%20Maintenance">Garden maintenance</Link></li>
               <li><Link href="/contact?service=Hedge%20%26%20Tree%20Trimming">Hedge & small tree trimming</Link></li>
               <li><Link href="/contact?service=Garden%20Clean-Up">Garden clean-ups</Link></li>
