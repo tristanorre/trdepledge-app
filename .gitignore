@@ -47,3 +47,7 @@ next-env.d.ts
 
 .vercel
 __pycache__/
+
+# Backups
+backups/
+*.sql.gz

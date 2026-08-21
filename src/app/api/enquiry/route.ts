@@ -6,6 +6,7 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import { sendEmail } from "@/lib/email";
+import { sendPush } from "@/lib/onesignal";
 import { getServiceClient } from "@/lib/supabase";
 import {
   DOUG_MODEL, DOUG_MAX_TOKENS, DOUG_SYSTEM_PROMPT,
@@ -351,6 +352,42 @@ export async function POST(req: Request) {
         }
       } else {
         console.warn("[enquiry] Supabase not configured — Doug capture NOT persisted");
+      }
+
+      // Push to admins, same as the contact form does. Doug captures were
+      // email-only, which meant a lead that came in through the chatbot
+      // reached Thomas by exactly one channel — and while Resend was
+      // unverified, by none at all. A lead is a lead regardless of which
+      // door it came through, so it gets both channels now.
+      //
+      // Best-effort and non-blocking: a failed push must never stop the
+      // email below, and neither must delay Doug's reply to the customer.
+      if (supabase) {
+        void (async () => {
+          const { data: admins } = await supabase
+            .from("users")
+            .select("id")
+            .eq("role", "admin")
+            .eq("active", true);
+          const adminIds = (admins ?? []).map((u) => u.id);
+          if (adminIds.length === 0) return;
+          const who = [newCapture.first_name, newCapture.last_name]
+            .filter(Boolean).join(" ") || "Someone";
+          await sendPush(
+            {
+              user_ids: adminIds,
+              title: "New enquiry via Doug",
+              message: [who, newCapture.service_type, newCapture.suburb]
+                .filter(Boolean).join(" · "),
+              deep_link: jobId
+                ? `/admin/jobs/${jobId}`
+                : enquiryId
+                  ? `/admin/enquiries/${enquiryId}`
+                  : "/admin/enquiries",
+            },
+            supabase,
+          );
+        })().catch((e) => console.error("[enquiry] notify push failed", e));
       }
 
       // Fire notification email even if the inserts failed — Thomas
