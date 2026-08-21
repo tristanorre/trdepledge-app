@@ -1,0 +1,1887 @@
+From 393a6a7f960880d4924e67a2cef7482bd18060d1 Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 00:03:12 +0000
+Subject: [PATCH 1/7] Audit fixes: link previews, LocalBusiness schema,
+ review-submit race, rate limit
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Five fixes from the end-to-end audit. No behaviour change for existing
+users; each is either a correctness fix or metadata that was absent.
+
+1. LINK PREVIEWS WERE BLANK EVERYWHERE. No og:image was set, so every
+   share on Facebook, WhatsApp and LinkedIn rendered with no picture, and
+   og:url was hardcoded to the homepage — a shared /services link claimed
+   to be the front page. metadataBase lets Next derive og:url and a
+   canonical per page; twitter:card moves to summary_large_image.
+
+2. NO STRUCTURED DATA. For a local trade the map pack is where the calls
+   come from, and there was no JSON-LD at all. Adds LocalBusiness with
+   address, service area, phone and hours. Hours are Mon-Fri 07:00-17:00
+   to match CLOSED_DAY_INDICES; if the contact page's Saturday hours are
+   correct then BOTH need changing together, plus the Google profile.
+   aggregateRating is deliberately omitted — Google requires ratings to
+   be really collected and shown on the page, and inventing one risks a
+   manual action.
+
+3. THE REVIEW 409 WAS ADVISORY, NOT ENFORCED. The responded_at check and
+   the UPDATE were separate statements, so two submissions racing on one
+   token both passed the check and both wrote. Conditioning the UPDATE on
+    lets the database pick the winner; .select()
+   distinguishes a real claim from a loser, since Supabase reports success
+   either way. Newly relevant — the table only started existing today.
+
+4. THE ONLY UNMETERED PUBLIC WRITE. The other three public endpoints rate
+   limit; this one didn't. Not about guessing a 128-bit token, about not
+   leaving an unauthenticated write path open to hammering. 10 per 10 min
+   so a customer who mis-taps and retries is never blocked.
+
+5. "Now in 2025" on the About page, read in August 2026. Dropped the year
+   rather than bumping it, so it can't go stale again.
+
+Deliberately NOT changed: HIRE_PUBLIC_LAUNCH. The hero's "Coming soon"
+tile is that flag, not an oversight — flipping it launches the hire
+product publicly, which is Thomas's call and not an audit fix.
+
+Verified: tsc --noEmit passes with zero errors. next build fails only on
+next/font reaching fonts.googleapis.com, which this sandbox blocks; the
+failing file (src/app/hire/layout.tsx) is untouched by this commit.
+---
+ src/app/(marketing)/about/page.tsx  |  2 +-
+ src/app/(marketing)/layout.tsx      | 66 ++++++++++++++++++++++++++++-
+ src/app/api/reviews/submit/route.ts | 31 +++++++++++++-
+ 3 files changed, 95 insertions(+), 4 deletions(-)
+
+diff --git a/src/app/(marketing)/about/page.tsx b/src/app/(marketing)/about/page.tsx
+index e4d8e84..9e65875 100644
+--- a/src/app/(marketing)/about/page.tsx
++++ b/src/app/(marketing)/about/page.tsx
+@@ -76,7 +76,7 @@ export default function AboutPage() {
+               <div className="quote-author">— Thomas Depledge, Owner & CEO</div>
+             </Reveal>
+ 
+-            <Reveal as="p">In 2024, Thomas fully stepped away from childcare and university to focus completely on the business. Now in 2025, with five team members on board, the business maintains the Moonta Bay Lifestyle Estate — around 80 homes with another 120 to come — while supporting over 30 regular clients.</Reveal>
++            <Reveal as="p">In 2024, Thomas fully stepped away from childcare and university to focus completely on the business. Today, with five team members on board, the business maintains the Moonta Bay Lifestyle Estate — around 80 homes with another 120 to come — while supporting over 30 regular clients.</Reveal>
+ 
+             <Reveal className="quote-block" style={{ background: "var(--lime)" }}>
+               <p className="quote-text" style={{ color: "var(--navy)" }}>
+diff --git a/src/app/(marketing)/layout.tsx b/src/app/(marketing)/layout.tsx
+index c86a386..ce262f7 100644
+--- a/src/app/(marketing)/layout.tsx
++++ b/src/app/(marketing)/layout.tsx
+@@ -10,6 +10,11 @@ import "@/app/v16.css";
+ 
+ // Marketing-specific metadata. Pages override `title` and `description`.
+ export const metadata: Metadata = {
++  // metadataBase lets Next resolve relative og/twitter image paths and emit a
++  // per-page canonical + og:url. Without it every page shared the homepage URL
++  // and no image at all, so link previews on Facebook/WhatsApp rendered blank.
++  metadataBase: new URL("https://trdepledgegardeningandmaintenance.com"),
++  alternates: { canonical: "./" },
+   title: {
+     default: "T.R. Depledge Gardening & Maintenance | Wallaroo · Copper Coast SA",
+     template: "%s | T.R. Depledge Gardening & Maintenance",
+@@ -26,16 +31,75 @@ export const metadata: Metadata = {
+     title: "T.R. Depledge Gardening & Maintenance",
+     description:
+       "Wallaroo's trusted garden & maintenance experts. Police-checked, NDIS & Aged Care approved.",
+-    url: "https://trdepledgegardeningandmaintenance.com",
++    // No explicit `url` — Next derives it per page from metadataBase, so a
++    // shared /services link no longer claims to be the homepage.
+     siteName: "T.R. Depledge Gardening & Maintenance",
+     locale: "en_AU",
+     type: "website",
++    images: [
++      {
++        url: "/images/hero-tr-poster.png",
++        width: 1200,
++        height: 630,
++        alt: "Thomas from T.R. Depledge Gardening & Maintenance with Doug the galah",
++      },
++    ],
+   },
++  twitter: {
++    card: "summary_large_image",
++    title: "T.R. Depledge Gardening & Maintenance",
++    description:
++      "Wallaroo's trusted garden & maintenance experts. Police-checked, NDIS & Aged Care approved.",
++    images: ["/images/hero-tr-poster.png"],
++  },
++};
++
++// LocalBusiness structured data. For a local trade this is the single
++// biggest technical SEO lever — it is what feeds the Google map pack, which
++// is where the phone calls come from. Hours here MUST match the contact page
++// and the Google Business Profile; a mismatch gets the profile flagged.
++//
++// Deliberately omits aggregateRating: Google requires ratings to be
++// genuinely collected and displayed on the page, and inventing one is both a
++// policy breach and a manual-action risk. Add it once real reviews are shown.
++const LOCAL_BUSINESS_JSONLD = {
++  "@context": "https://schema.org",
++  "@type": "LocalBusiness",
++  name: "T.R. Depledge Gardening & Maintenance",
++  description:
++    "Gardening, lawn mowing, landscaping and outdoor maintenance across Wallaroo, Kadina, Moonta and the Copper Coast. NDIS and Aged Care approved, police-checked staff.",
++  url: "https://trdepledgegardeningandmaintenance.com",
++  telephone: "+61474844204",
++  email: "t.rdepledge@outlook.com",
++  image: "https://trdepledgegardeningandmaintenance.com/images/hero-tr-poster.png",
++  foundingDate: "2020-11-30",
++  address: {
++    "@type": "PostalAddress",
++    addressLocality: "Wallaroo",
++    addressRegion: "SA",
++    addressCountry: "AU",
++  },
++  areaServed: [
++    "Wallaroo", "Kadina", "Moonta", "Moonta Bay",
++    "Copper Coast", "Yorke Peninsula",
++  ].map((name) => ({ "@type": "Place", name })),
++  openingHoursSpecification: [
++    {
++      "@type": "OpeningHoursSpecification",
++      dayOfWeek: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
++      opens: "07:00",
++      closes: "17:00",
++    },
++  ],
+ };
+ 
+ export default function MarketingLayout({ children }: { children: React.ReactNode }) {
+   return (
+     <>
++      <script
++        type="application/ld+json"
++        dangerouslySetInnerHTML={{ __html: JSON.stringify(LOCAL_BUSINESS_JSONLD) }}
++      />
+       <Nav />
+       <main>{children}</main>
+       <Footer />
+diff --git a/src/app/api/reviews/submit/route.ts b/src/app/api/reviews/submit/route.ts
+index 008405b..46d081e 100644
+--- a/src/app/api/reviews/submit/route.ts
++++ b/src/app/api/reviews/submit/route.ts
+@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
+ import { getServiceClient } from "@/lib/supabase";
+ import { sendEmail } from "@/lib/email";
+ import { googleReviewUrl } from "@/lib/reviews";
++import { rateLimit, clientIp } from "@/lib/rate-limit";
+ 
+ export const runtime = "nodejs";
+ 
+@@ -11,6 +12,20 @@ export const runtime = "nodejs";
+ // second submission for the same token returns 409 so someone
+ // sharing the link can't overwrite the original response.
+ export async function POST(req: Request) {
++  // The other three public endpoints are rate limited; this one wasn't.
++  // A 128-bit token isn't brute-forceable, so this is about keeping an
++  // unauthenticated write path from being hammered rather than about
++  // guessing tokens. Generous enough that a customer who mis-taps and
++  // retries a few times is never blocked.
++  const ip = clientIp(req);
++  const limit = rateLimit(`reviews-submit:${ip}`, { max: 10, windowMs: 10 * 60 * 1000 });
++  if (!limit.ok) {
++    return NextResponse.json(
++      { error: "Too many attempts, try again shortly." },
++      { status: 429, headers: { "Retry-After": String(Math.ceil(limit.resetMs / 1000)) } },
++    );
++  }
++
+   const supabase = getServiceClient();
+   if (!supabase) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+ 
+@@ -47,7 +62,14 @@ export async function POST(req: Request) {
+ 
+   const routeToGoogle = rating >= 4;
+ 
+-  const { error: updErr } = await supabase
++  // `.is("responded_at", null)` makes the claim atomic. The read above can
++  // only tell us the row was unanswered a moment ago; two submissions racing
++  // on the same token would both pass that check and both write, so the 409
++  // was advisory rather than enforced. Conditioning the UPDATE itself means
++  // the database decides the winner — the loser matches zero rows and gets
++  // the same 409 as a plain replay. `.select()` is what lets us tell the two
++  // apart, since Supabase reports success either way.
++  const { data: claimed, error: updErr } = await supabase
+     .from("review_requests")
+     .update({
+       responded_at: new Date().toISOString(),
+@@ -55,11 +77,16 @@ export async function POST(req: Request) {
+       private_feedback: privateFeedback,
+       redirected_to_google: routeToGoogle,
+     })
+-    .eq("id", reqRow.id);
++    .eq("id", reqRow.id)
++    .is("responded_at", null)
++    .select("id");
+   if (updErr) {
+     console.error("[reviews/submit] update", updErr);
+     return NextResponse.json({ error: "Could not save" }, { status: 500 });
+   }
++  if (!claimed || claimed.length === 0) {
++    return NextResponse.json({ error: "Already responded" }, { status: 409 });
++  }
+ 
+   // Notify Thomas for every response so he sees ratings land in real
+   // time, but urgent-flag the ones that stayed private (<= 3 stars).
+-- 
+2.43.0
+
+
+From e8703789ea970cf4dc60a3b1f7843b9a9c6a2d6e Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 02:11:37 +0000
+Subject: [PATCH 2/7] Doug enquiries now push to admins; add a database backup
+ script
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+TWO SEPARATE THINGS, both surfaced by testing the live site today.
+
+DOUG CAPTURES WERE EMAIL-ONLY. The contact form notifies admins twice —
+push and email — on the reasoning, written in its own comments, that the
+email lands 'even if the OneSignal push misses or his phone is off'. Doug
+had only the email half. Proven by submitting one lead through each route
+and reading the runtime logs: /api/enquiries attempted both, /api/enquiry
+attempted only the email. With Resend still unverified that meant a lead
+arriving through the chatbot reached nobody at all — it sat in the table
+until someone happened to open the admin console.
+
+The push is fired best-effort and unawaited: Doug is a live conversation,
+so the customer must not wait on OneSignal, and a failed push must not
+stop the email that follows it. Deep-links to the job when the capture
+converted to one, else the enquiry, else the list.
+
+BACKUP SCRIPT. The schema was never at risk — 39 migrations in git rebuild
+it exactly. The data was, and is: free-plan Supabase has no point-in-time
+recovery, so 325 jobs, 41 clients, leave balances and paid hours have no
+recovery path at all. A migration already sat unapplied for three weeks
+without anyone noticing, which is the same blind spot in a different form.
+
+xero_tokens is excluded from the data dump deliberately. Those rows are
+live OAuth refresh tokens, and a backup that gets copied to a laptop or a
+cloud drive would turn one file into a credential leak. Xero reconnects
+through OAuth after a restore, so nothing is actually lost.
+
+Storage buckets are NOT covered — job photos, hire photos and flyers live
+in Supabase Storage, which pg_dump cannot see. That gap is real and still
+open; this script does not pretend otherwise.
+
+backups/ and *.sql.gz added to .gitignore so a dump full of customer names,
+addresses and payroll data can never be committed by accident.
+
+Verified: tsc --noEmit passes; bash -n on the script passes.
+---
+ .gitignore                   |  4 ++
+ scripts/backup-db.sh         | 73 ++++++++++++++++++++++++++++++++++++
+ src/app/api/enquiry/route.ts | 37 ++++++++++++++++++
+ 3 files changed, 114 insertions(+)
+ create mode 100755 scripts/backup-db.sh
+
+diff --git a/.gitignore b/.gitignore
+index 01b26df..a537d56 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -47,3 +47,7 @@ next-env.d.ts
+ 
+ .vercel
+ __pycache__/
++
++# Backups
++backups/
++*.sql.gz
+diff --git a/scripts/backup-db.sh b/scripts/backup-db.sh
+new file mode 100755
+index 0000000..6b33b60
+--- /dev/null
++++ b/scripts/backup-db.sh
+@@ -0,0 +1,73 @@
++#!/usr/bin/env bash
++#
++# Logical backup of the production database.
++#
++# WHY THIS EXISTS
++# The schema is already safe — all 39 migrations live in supabase/migrations
++# and are in git, so the structure can be rebuilt from source at any time.
++# What is NOT recoverable is the DATA: 325 jobs, 41 clients, 6 users, leave
++# balances, paid hours, and the audit log. The project is on the Supabase
++# free plan, which has no point-in-time recovery, so a bad migration or a
++# mistaken DELETE is currently unrecoverable. This script is the stopgap
++# until the project moves to a plan that includes PITR.
++#
++# WHAT IT DOES NOT COVER
++#   * Storage buckets (job photos, hire photos, flyers). Those live in
++#     Supabase Storage, not Postgres, and pg_dump does not touch them.
++#     They need a separate sync — worth doing, not done here.
++#   * Anything written after the dump completes.
++#
++# USAGE
++#   1. Get the connection string:
++#        Supabase dashboard → Project Settings → Database → Connection string
++#        → URI. Use the SESSION POOLER string for a one-off dump.
++#   2. export SUPABASE_DB_URL='postgresql://postgres.<ref>:<password>@...'
++#   3. ./scripts/backup-db.sh
++#
++# The connection string contains the database password. Do not commit it,
++# do not paste it into chat, and prefer exporting it in the shell over
++# putting it in a file.
++#
++set -euo pipefail
++
++if [[ -z "${SUPABASE_DB_URL:-}" ]]; then
++  echo "SUPABASE_DB_URL is not set." >&2
++  echo "See the header of this script for where to get it." >&2
++  exit 1
++fi
++
++OUT_DIR="${BACKUP_DIR:-./backups}"
++STAMP="$(date +%Y%m%d-%H%M%S)"
++mkdir -p "$OUT_DIR"
++
++SCHEMA_FILE="$OUT_DIR/schema-$STAMP.sql"
++DATA_FILE="$OUT_DIR/data-$STAMP.sql"
++
++echo "→ Dumping schema…"
++pg_dump "$SUPABASE_DB_URL" \
++  --schema-only --no-owner --no-privileges \
++  --schema=public --schema=app \
++  --file "$SCHEMA_FILE"
++
++# Data dump excludes xero_tokens on purpose. Those rows hold live OAuth
++# access and refresh tokens; putting them in a file that gets copied to a
++# laptop or a cloud drive turns one backup into a credential leak. Xero can
++# simply be reconnected through the OAuth flow after a restore, so nothing
++# of value is lost by leaving them out.
++echo "→ Dumping data (excluding xero_tokens)…"
++pg_dump "$SUPABASE_DB_URL" \
++  --data-only --no-owner --no-privileges \
++  --schema=public --schema=app \
++  --exclude-table-data='public.xero_tokens' \
++  --file "$DATA_FILE"
++
++echo "→ Compressing…"
++gzip -f "$SCHEMA_FILE" "$DATA_FILE"
++
++echo
++echo "Done:"
++ls -lh "$OUT_DIR" | tail -2
++echo
++echo "These files contain customer names, addresses, phone numbers and payroll"
++echo "data. Store them somewhere access-controlled and encrypted, not in the"
++echo "repo and not in a public cloud folder."
+diff --git a/src/app/api/enquiry/route.ts b/src/app/api/enquiry/route.ts
+index a96a838..d5369b6 100644
+--- a/src/app/api/enquiry/route.ts
++++ b/src/app/api/enquiry/route.ts
+@@ -6,6 +6,7 @@ import type {
+   ToolResultBlockParam,
+ } from "@anthropic-ai/sdk/resources/messages";
+ import { sendEmail } from "@/lib/email";
++import { sendPush } from "@/lib/onesignal";
+ import { getServiceClient } from "@/lib/supabase";
+ import {
+   DOUG_MODEL, DOUG_MAX_TOKENS, DOUG_SYSTEM_PROMPT,
+@@ -353,6 +354,42 @@ export async function POST(req: Request) {
+         console.warn("[enquiry] Supabase not configured — Doug capture NOT persisted");
+       }
+ 
++      // Push to admins, same as the contact form does. Doug captures were
++      // email-only, which meant a lead that came in through the chatbot
++      // reached Thomas by exactly one channel — and while Resend was
++      // unverified, by none at all. A lead is a lead regardless of which
++      // door it came through, so it gets both channels now.
++      //
++      // Best-effort and non-blocking: a failed push must never stop the
++      // email below, and neither must delay Doug's reply to the customer.
++      if (supabase) {
++        void (async () => {
++          const { data: admins } = await supabase
++            .from("users")
++            .select("id")
++            .eq("role", "admin")
++            .eq("active", true);
++          const adminIds = (admins ?? []).map((u) => u.id);
++          if (adminIds.length === 0) return;
++          const who = [newCapture.first_name, newCapture.last_name]
++            .filter(Boolean).join(" ") || "Someone";
++          await sendPush(
++            {
++              user_ids: adminIds,
++              title: "New enquiry via Doug",
++              message: [who, newCapture.service_type, newCapture.suburb]
++                .filter(Boolean).join(" · "),
++              deep_link: jobId
++                ? `/admin/jobs/${jobId}`
++                : enquiryId
++                  ? `/admin/enquiries/${enquiryId}`
++                  : "/admin/enquiries",
++            },
++            supabase,
++          );
++        })().catch((e) => console.error("[enquiry] notify push failed", e));
++      }
++
+       // Fire notification email even if the inserts failed — Thomas
+       // still gets the lead; he can create rows manually if needed.
+       // Prefer linking to the job (the primary review destination)
+-- 
+2.43.0
+
+
+From f5b0817cdf3a128ea5f78db657cec4548be96274 Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 02:19:32 +0000
+Subject: [PATCH 3/7] Lawn mowing enquiries stop arriving labelled Garden
+ Maintenance
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+"Lawn mowing & edging" is the first item in the canonical SERVICES list
+and the most common job Thomas does, but it was missing from
+SERVICE_OPTIONS — the list the contact form's dropdown is built from and
+the one ?service= is validated against.
+
+Both links that advertise it therefore fell back to the nearest existing
+option, Garden Maintenance: the footer's Services column and the first
+tile on /services. A customer clicking "Lawn mowing & edging" landed on a
+form already filled in as something else, and the enquiry reached Thomas
+under the wrong heading. He could still work it out by reading the
+message, but the label is what he sorts and prices by, so a mow request
+and a full maintenance visit were indistinguishable at a glance.
+
+Adding the option fixes both links at their source rather than patching
+each one, since the type is derived from the array — a future link that
+names a service not on the list still fails the same way, which is the
+intended behaviour and is what surfaced this.
+
+Placed first in the array to match the canonical order used on the
+homepage cards, /services tiles and footer.
+
+Verified: tsc --noEmit passes.
+---
+ src/app/(marketing)/services/page.tsx | 2 +-
+ src/components/Footer.tsx             | 2 +-
+ src/lib/services.ts                   | 7 +++++++
+ 3 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/(marketing)/services/page.tsx b/src/app/(marketing)/services/page.tsx
+index 8664d2e..e066224 100644
+--- a/src/app/(marketing)/services/page.tsx
++++ b/src/app/(marketing)/services/page.tsx
+@@ -32,7 +32,7 @@ const SERVICES: Service[] = [
+     icon: "🌱",
+     name: "Lawn mowing & edging",
+     desc: "Regular mowing and crisp edges. Quick visits to keep your lawn looking sharp through every season.",
+-    enquiry: "Garden Maintenance",
++    enquiry: "Lawn Mowing & Edging",
+   },
+   {
+     image: "/images/Services/service-garden-maintenance.png",
+diff --git a/src/components/Footer.tsx b/src/components/Footer.tsx
+index 943a810..0c855d8 100644
+--- a/src/components/Footer.tsx
++++ b/src/components/Footer.tsx
+@@ -49,7 +49,7 @@ export default function Footer() {
+                 points at /contact?service=… via the existing pattern
+                 so the dropdown pre-fills. */}
+             <ul className="footer-links">
+-              <li><Link href="/contact?service=Garden%20Maintenance">Lawn mowing & edging</Link></li>
++              <li><Link href="/contact?service=Lawn%20Mowing%20%26%20Edging">Lawn mowing & edging</Link></li>
+               <li><Link href="/contact?service=Garden%20Maintenance">Garden maintenance</Link></li>
+               <li><Link href="/contact?service=Hedge%20%26%20Tree%20Trimming">Hedge & small tree trimming</Link></li>
+               <li><Link href="/contact?service=Garden%20Clean-Up">Garden clean-ups</Link></li>
+diff --git a/src/lib/services.ts b/src/lib/services.ts
+index 7dec8e3..af78a15 100644
+--- a/src/lib/services.ts
++++ b/src/lib/services.ts
+@@ -6,6 +6,13 @@
+ // can't be called during SSR.
+ 
+ export const SERVICE_OPTIONS = [
++  // "Lawn Mowing & Edging" is first because it is the single most common
++  // job and the top item in the canonical SERVICES list. It was missing
++  // here, so the footer's "Lawn mowing & edging" link fell back to
++  // ?service=Garden%20Maintenance and the enquiry arrived under the wrong
++  // heading — Thomas could not tell a mow request from a full maintenance
++  // visit without reading the message.
++  "Lawn Mowing & Edging",
+   "Garden Maintenance",
+   "Instant Lawn Install",
+   "Yard Revamp",
+-- 
+2.43.0
+
+
+From a76cf74a673f3eacea0bd0d63161717788726984 Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 02:22:54 +0000
+Subject: [PATCH 4/7] Stop advertising three things the business does not offer
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+All three confirmed with Thomas. Each was a claim the site made that the
+business could not honour, which costs more than the claim gains — a
+customer who chooses on that basis finds out at the worst moment.
+
+AFTERPAY. Listed among the accepted payment methods in two places (the
+shared BookCta strip and the contact page's longer list) and not
+accepted. Someone budgeting a yard revamp around paying in four would
+have found out at the invoice. Removed from both; the remaining methods
+are unchanged.
+
+"CLEAR, PUBLISHED RATES." The Transparent Pricing card promised published
+rates and then, in the same sentence, told the reader to contact us for a
+quote. No rates are published anywhere on the site, and Thomas does not
+want them published — jobs are quoted per property. The claim now
+describes what actually happens: an honest quote up front, no surprises
+on the invoice. Same reassurance, and true.
+
+"ONLINE BOOKING." Four places said book online — the homepage trust bar,
+its CTA button, the shared BookCta default label and lead, the footer
+link, and the gallery CTA. Every one of them pointed at the contact form,
+which takes an enquiry and starts a quote. Nothing on the services side
+books anything. All now say quote.
+
+Left alone deliberately: the contact page heading "Book a Job or Get a
+Quote". You genuinely can request a job through that form, so it is
+accurate as written.
+
+Worth revisiting when the hire booking flow goes public — /hire IS a real
+online booking, with live availability and a reservation. The claim
+becomes true then, for that side of the business, and the copy can say so.
+
+Verified: tsc --noEmit passes.
+---
+ src/app/(marketing)/contact/page.tsx |  2 +-
+ src/app/(marketing)/gallery/page.tsx |  2 +-
+ src/app/(marketing)/page.tsx         |  6 +++---
+ src/components/BookCta.tsx           | 15 ++++++++++++---
+ src/components/Footer.tsx            |  2 +-
+ 5 files changed, 18 insertions(+), 9 deletions(-)
+
+diff --git a/src/app/(marketing)/contact/page.tsx b/src/app/(marketing)/contact/page.tsx
+index ba554e6..2f753ef 100644
+--- a/src/app/(marketing)/contact/page.tsx
++++ b/src/app/(marketing)/contact/page.tsx
+@@ -99,7 +99,7 @@ export default function ContactPage({
+               <Reveal delay={3} style={{ background: "var(--off)", borderRadius: 16, padding: 24, marginTop: 20 }}>
+                 <div style={{ fontWeight: 800, fontSize: 15, color: "var(--navy)", marginBottom: 12 }}>We Accept</div>
+                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+-                  {["Visa", "Mastercard", "Apple Pay", "Google Pay", "Afterpay", "EFTPOS", "Bank Transfer"].map((p) => (
++                  {["Visa", "Mastercard", "Apple Pay", "Google Pay", "EFTPOS", "Bank Transfer"].map((p) => (
+                     <span key={p} className="payment-pill" style={{ background: "var(--navy)", color: "white" }}>{p}</span>
+                   ))}
+                 </div>
+diff --git a/src/app/(marketing)/gallery/page.tsx b/src/app/(marketing)/gallery/page.tsx
+index 4bd3d44..4edf7fa 100644
+--- a/src/app/(marketing)/gallery/page.tsx
++++ b/src/app/(marketing)/gallery/page.tsx
+@@ -82,7 +82,7 @@ export default async function GalleryPage() {
+         eyebrow="Your Garden Next?"
+         title={<>Want a Yard That <em>Turns</em><br />Heads?</>}
+         lead="Get in touch and we'll transform your garden — clean, neat, and done properly."
+-        primaryLabel="Book a Job →"
++        primaryLabel="Get a Free Quote →"
+       />
+     </>
+   );
+diff --git a/src/app/(marketing)/page.tsx b/src/app/(marketing)/page.tsx
+index 526c2ad..a74cf09 100644
+--- a/src/app/(marketing)/page.tsx
++++ b/src/app/(marketing)/page.tsx
+@@ -195,7 +195,7 @@ export default function HomePage() {
+                   <div className="whyus-point-icon">💰</div>
+                   <div>
+                     <div className="whyus-point-title">Transparent Pricing</div>
+-                    <div className="whyus-point-desc">Clear, published rates with no hidden fees. Contact us for a quote — we provide honest, transparent pricing tailored to your job.</div>
++                    <div className="whyus-point-desc">An honest quote up front, with no hidden fees and no surprises on the invoice. You know what the job costs before we start.</div>
+                   </div>
+                 </Reveal>
+                 <Reveal delay={3} className="whyus-point">
+@@ -213,9 +213,9 @@ export default function HomePage() {
+                 <div className="trust-item"><div className="trust-check">✓</div> Police-checked, trusted team</div>
+                 <div className="trust-item"><div className="trust-check">✓</div> NDIS & Aged Care approved</div>
+                 <div className="trust-item"><div className="trust-check">✓</div> Wallaroo, Kadina & Moonta</div>
+-                <div className="trust-item"><div className="trust-check">✓</div> Online booking available</div>
++                <div className="trust-item"><div className="trust-check">✓</div> Free quotes, no obligation</div>
+                 <div className="trust-item"><div className="trust-check">✓</div> All major payments accepted</div>
+-                <Link href="/contact" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 24 }}>Book a Job Online →</Link>
++                <Link href="/contact" className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 24 }}>Get a Free Quote →</Link>
+               </Reveal>
+               <Reveal delay={1} className="contact-card">
+                 <div className="contact-card-title">Prefer to Call?</div>
+diff --git a/src/components/BookCta.tsx b/src/components/BookCta.tsx
+index a8505e2..9b1a7d2 100644
+--- a/src/components/BookCta.tsx
++++ b/src/components/BookCta.tsx
+@@ -14,7 +14,11 @@ type Props = {
+   primaryLabel?: string;
+ };
+ 
+-const PAYMENT_METHODS = ["Visa", "Mastercard", "Apple Pay", "Google Pay", "Afterpay", "EFTPOS"];
++// Afterpay removed — confirmed with Thomas that it is not accepted.
++// Advertising a payment method the business cannot take is worse than
++// listing one fewer: a customer who chooses on that basis finds out at
++// the point of paying.
++const PAYMENT_METHODS = ["Visa", "Mastercard", "Apple Pay", "Google Pay", "EFTPOS"];
+ 
+ export default function BookCta({
+   eyebrow = "Get Started Today",
+@@ -25,9 +29,14 @@ export default function BookCta({
+       Garden?
+     </>
+   ),
+-  lead = "Book online or give Thomas a call. We'll get your garden sorted — professionally, reliably, and at a fair price.",
++  // "Book online" promised a booking system that does not exist yet —
++  // both this CTA and every caller point at the contact form, which takes
++  // an enquiry and starts a quote. The wording now matches what actually
++  // happens. Revisit when the hire booking flow goes public: that one IS
++  // a real online booking, and this copy can say so then.
++  lead = "Send Thomas a message or give him a call. We'll get your garden sorted — professionally, reliably, and at a fair price.",
+   primaryHref = "/contact",
+-  primaryLabel = "Book Online Now →",
++  primaryLabel = "Get a Free Quote →",
+ }: Props) {
+   return (
+     <section className="book-section">
+diff --git a/src/components/Footer.tsx b/src/components/Footer.tsx
+index 0c855d8..1643f83 100644
+--- a/src/components/Footer.tsx
++++ b/src/components/Footer.tsx
+@@ -83,7 +83,7 @@ export default function Footer() {
+         <div className="footer-bottom">
+           <div>© {new Date().getFullYear()} T.R. Depledge Gardening & Maintenance · ABN registered 30 November 2020</div>
+           <div className="footer-bottom-links">
+-            <Link href="/contact">Book Online</Link>
++            <Link href="/contact">Get a Quote</Link>
+             <Link href="/privacy">Privacy Policy</Link>
+           </div>
+         </div>
+-- 
+2.43.0
+
+
+From d8033690bc444ca9bcb3cb8cb70f536f465a39bf Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 02:27:48 +0000
+Subject: [PATCH 5/7] Closed Saturday everywhere; write down why the crons look
+ wrong
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+HOURS. Four places state when the business is open and one of them
+disagreed. The contact page advertised Saturday 7am-12pm and Sunday by
+arrangement; CLOSED_DAY_INDICES in the hire config has both weekend days
+shut; Doug tells customers the counter is closed Saturday and Sunday; and
+the LocalBusiness schema says Mon-Fri. Settled as closed.
+
+That was not merely untidy. The availability engine rejects any collection
+or return on a closed day, so a DIY customer reading Saturday on the
+contact page and then trying to book a wacker packer for Saturday morning
+would have been refused by the form — the site advertising a service the
+same site declines. All four now say the same thing.
+
+The Google Business Profile has to match. A profile whose hours disagree
+with the site it links to gets flagged, and the map pack is where a local
+trade's calls come from, so this is worth checking rather than assuming.
+
+CRONS. Both entries in vercel.json look like morning jobs and are not.
+Vercel runs crons in UTC with no timezone option, so  is 08:30 UTC,
+which is 18:00 in Adelaide. Six in the evening is the whole point of
+job-reminders — it tells people about TOMORROW, so it wants to land after
+the day's work rather than during it. Nothing in the repo said so, which
+is why the audit initially read it as a ten-hour mistake. Now it does.
+
+Both drift an hour from October to April when Adelaide moves to UTC+10:30
+for daylight saving. Left alone and documented rather than engineered
+around: an hour either side of six is still an evening reminder, and the
+fixes cost more than the drift. A second cron entry is not available
+(Hobby allows two, both used), and running hourly to check the local hour
+would spend the remaining slot on a problem nobody has noticed.
+
+Verified: tsc --noEmit passes.
+---
+ src/app/(marketing)/contact/page.tsx    | 16 ++++++++++++++--
+ src/app/api/cron/hire-expiry/route.ts   |  8 +++++++-
+ src/app/api/cron/job-reminders/route.ts | 15 ++++++++++++++-
+ 3 files changed, 35 insertions(+), 4 deletions(-)
+
+diff --git a/src/app/(marketing)/contact/page.tsx b/src/app/(marketing)/contact/page.tsx
+index 2f753ef..b62d6a2 100644
+--- a/src/app/(marketing)/contact/page.tsx
++++ b/src/app/(marketing)/contact/page.tsx
+@@ -87,10 +87,22 @@ export default function ContactPage({
+               </Reveal>
+ 
+               <Reveal delay={2} className="hours-card">
++                {/*
++                  Mon–Fri only. This used to advertise Saturday 7am–12pm and
++                  "Sunday by arrangement", which contradicted both the
++                  LocalBusiness schema in the marketing layout and
++                  CLOSED_DAY_INDICES in the hire config — the availability
++                  engine rejects any collection or return on a weekend, so a
++                  customer reading Saturday here would have been turned away
++                  by the booking form. Settled as closed. All three sources
++                  now agree, and so must the Google Business Profile: a
++                  mismatch between the site and the profile gets the profile
++                  flagged.
++                */}
+                 <div className="hours-title">⏰ Operating Hours</div>
+                 <div className="hours-row"><span className="day">Monday – Friday</span><span>7:00am – 5:00pm</span></div>
+-                <div className="hours-row"><span className="day">Saturday</span><span>7:00am – 12:00pm</span></div>
+-                <div className="hours-row"><span className="day">Sunday</span><span>By arrangement</span></div>
++                <div className="hours-row"><span className="day">Saturday</span><span>Closed</span></div>
++                <div className="hours-row"><span className="day">Sunday</span><span>Closed</span></div>
+                 <div style={{ fontSize: 12, color: "var(--navy)", opacity: 0.6, marginTop: 12 }}>
+                   Emergency or urgent jobs — please call directly.
+                 </div>
+diff --git a/src/app/api/cron/hire-expiry/route.ts b/src/app/api/cron/hire-expiry/route.ts
+index 7646870..57d8dea 100644
+--- a/src/app/api/cron/hire-expiry/route.ts
++++ b/src/app/api/cron/hire-expiry/route.ts
+@@ -7,7 +7,13 @@ export const runtime = "nodejs";
+ export const dynamic = "force-dynamic";
+ 
+ // Vercel Cron entry point — releases pending hire requests whose 24 hours
+-// are up (schedule in vercel.json).
++// are up. Scheduled `15 9 * * *` in vercel.json, which is 09:15 UTC and so
++// 18:45 in Adelaide (UTC+9:30, or 19:45 over summer when it shifts to
++// +10:30). Vercel runs crons in UTC with no timezone option, so the local
++// time is worked out by hand — see the same note on job-reminders. The
++// exact minute barely matters here: this is a daily sweep, and a hold that
++// expires at noon simply sits until the evening pass. It runs 45 minutes
++// after the job reminders so the two never contend for the same instance.
+ //
+ // The public page promises "your dates are held while Thomas confirms", so
+ // pending reservations genuinely occupy the calendar. Without this sweep,
+diff --git a/src/app/api/cron/job-reminders/route.ts b/src/app/api/cron/job-reminders/route.ts
+index 91bca21..ea5fe48 100644
+--- a/src/app/api/cron/job-reminders/route.ts
++++ b/src/app/api/cron/job-reminders/route.ts
+@@ -9,7 +9,20 @@ import type { Job } from "@/lib/types";
+ export const runtime = "nodejs";
+ export const dynamic = "force-dynamic";
+ 
+-// Vercel Cron entry point. Runs at 18:00 every day (config in vercel.json).
++// Vercel Cron entry point. Scheduled `30 8 * * *` in vercel.json.
++//
++// THAT IS 08:30 UTC, WHICH IS 18:00 IN ADELAIDE — deliberate, not a typo.
++// Vercel runs crons in UTC and offers no timezone setting, so the local
++// time has to be worked out by hand: Adelaide is UTC+9:30. Six in the
++// evening is the point of it — this reminds people about TOMORROW, so it
++// wants to land after the day's work, not during it.
++//
++// It drifts an hour over summer. Adelaide moves to UTC+10:30 for daylight
++// saving, so from October to April this fires at 19:00 instead. Left as
++// is: an hour either side of six is still an evening reminder, and the
++// alternatives both cost more than the drift is worth — either a second
++// cron entry (Hobby allows two, and both are already used) or running
++// hourly and returning early unless the Adelaide hour matches.
+ //
+ // Two responsibilities per spec:
+ //   1. SMS the client a reminder for tomorrow's job
+-- 
+2.43.0
+
+
+From b9617ef2a65955e6db707840f52aefc1630d269b Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 02:32:55 +0000
+Subject: [PATCH 6/7] Two ways a worker could be charged the same leave twice
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Both are the same shape: a check that reads state, then a write that does
+not re-assert it. Neither has fired in production yet — daily_timesheets
+has zero approved rows and leave_requests has one — so this is prevention,
+not repair. Worth fixing before payroll runs in anger, because the symptom
+is a worker being short on entitlement months later with nothing in the
+data explaining why.
+
+LEAVE APPROVAL. The route read the request, returned 409 if it was not
+pending, then updated on id alone. Two admins actioning the same request,
+or one admin double-tapping on a slow connection, both pass the read and
+both reach increment_leave_balance. The update is now conditioned on
+status = 'pending' so Postgres picks the winner, and .select() tells a
+real claim from a loser since Supabase reports success either way.
+
+TIMESHEET RE-APPROVAL. Worse, because it needs no race at all. The handler
+selects approved_at and never looks at it, so approving a day a second
+time — correcting the hours, fixing a note — ran the whole apply path
+again. Paid hours survived that: worker_paid_hours upserts on
+(worker_id, work_date), so a repeat is a no-op. The leave balance did not:
+increment_leave_balance adds to a running total, so every re-approval
+charged another day. The increment is now skipped when the day already
+carried an approval.
+
+Known gap, deliberately not fixed here: reclassifying an approved day from
+one leave type to another (annual to sick, say) leaves the original
+counter incremented, because unwinding it needs to know what the previous
+approval was and the balance table records no such history. Skipping the
+increment is strictly better than double-charging, but a reclassification
+still wants a manual balance correction. Fixing it properly means either
+an audit trail on the balances or recomputing them from timesheets, and
+that is a design decision rather than a patch.
+
+The hire reservation route already conditions its status transition the
+same way (.eq("status", reservation.status)), which is where the pattern
+came from.
+
+Verified: tsc --noEmit passes.
+---
+ src/app/api/admin/leave/[id]/route.ts        | 16 ++++++++++++++--
+ src/app/api/admin/timesheet/approve/route.ts | 17 ++++++++++++++++-
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/src/app/api/admin/leave/[id]/route.ts b/src/app/api/admin/leave/[id]/route.ts
+index 1f3bf09..a0ee1fa 100644
+--- a/src/app/api/admin/leave/[id]/route.ts
++++ b/src/app/api/admin/leave/[id]/route.ts
+@@ -42,19 +42,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
+     return NextResponse.json({ error: "Request already actioned" }, { status: 409 });
+   }
+ 
+-  const { error: updateErr } = await supabase
++  // Conditioned on `status = 'pending'` so the database, not the read
++  // above, decides who wins. The 409 a few lines up can only report what
++  // was true a moment ago: two admins actioning the same request — or one
++  // admin double-tapping on a slow connection — would both pass that
++  // check and both fall through to the balance increment below, deducting
++  // the same leave twice. `.select()` distinguishes a real claim from a
++  // loser, since Supabase reports success either way.
++  const { data: claimed, error: updateErr } = await supabase
+     .from("leave_requests")
+     .update({
+       status,
+       reviewed_at: new Date().toISOString(),
+       reviewed_by: session.user.id,
+     })
+-    .eq("id", params.id);
++    .eq("id", params.id)
++    .eq("status", "pending")
++    .select("id");
+ 
+   if (updateErr) {
+     console.error("[admin/leave PATCH]", updateErr);
+     return NextResponse.json({ error: "Could not update" }, { status: 500 });
+   }
++  if (!claimed || claimed.length === 0) {
++    return NextResponse.json({ error: "Request already actioned" }, { status: 409 });
++  }
+ 
+   // Update the running tally on approval. Work-day counting (skip
+   // weekends/public holidays) is more involved than we need here —
+diff --git a/src/app/api/admin/timesheet/approve/route.ts b/src/app/api/admin/timesheet/approve/route.ts
+index 8a3b2ee..58ba601 100644
+--- a/src/app/api/admin/timesheet/approve/route.ts
++++ b/src/app/api/admin/timesheet/approve/route.ts
+@@ -157,6 +157,7 @@ async function handleDay(supabase: SupabaseClient, adminId: string, input: PerDa
+       approved_hours:      input.approved_hours ?? null,
+       admin_note:          input.admin_note ?? null,
+     },
++    alreadyApproved: Boolean(row.approved_at),
+   });
+   if (!result.ok) {
+     return NextResponse.json({ error: result.error }, { status: 500 });
+@@ -198,6 +199,7 @@ async function handleWeek(supabase: SupabaseClient, adminId: string, input: PerW
+         approved_hours: override?.approved_hours ?? null,
+         admin_note: override?.admin_note ?? null,
+       },
++      alreadyApproved: Boolean(r.approved_at),
+     });
+     if (result.ok) approvedCount += 1;
+     else errors.push(`${r.work_date}: ${result.error}`);
+@@ -223,6 +225,10 @@ type ApplyArgs = {
+     approved_hours: number | null;
+     admin_note: string | null;
+   };
++  // True when this day already carried an approval. Used to skip the
++  // leave-balance increment, which is additive and would otherwise
++  // double-charge the worker on every re-approval.
++  alreadyApproved: boolean;
+ };
+ 
+ async function applyApproval(
+@@ -277,8 +283,17 @@ async function applyApproval(
+   }
+ 
+   // 3. Leave balance: increment the matching used counter.
++  //
++  // ONLY ON FIRST APPROVAL. increment_leave_balance adds to a running
++  // total, unlike the worker_paid_hours upsert above which is keyed on
++  // (worker_id, work_date) and so is naturally idempotent. Re-approving a
++  // day — correcting the hours, fixing a typo in the note — used to run
++  // this a second time and charge the worker the same day of leave twice.
++  // Nothing surfaced it: the balance is a plain counter with no audit of
++  // what fed it, so the only symptom is a worker being short on
++  // entitlement months later.
+   const balanceCol = LEAVE_BALANCE_COLUMN[effectiveType];
+-  if (balanceCol) {
++  if (balanceCol && !args.alreadyApproved) {
+     // Convert hours → days for the balance (8h workday assumed).
+     // Round to nearest whole day to keep the existing balance
+     // schema (integer days) happy.
+-- 
+2.43.0
+
+
+From 079f0e79afd48c6dfc939de2dd359ffcac5062f6 Mon Sep 17 00:00:00 2001
+From: Audit <audit@local>
+Date: Fri, 21 Aug 2026 02:38:48 +0000
+Subject: [PATCH 7/7] System health: catch the silent failures instead of
+ finding them months later
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+THE PROBLEM THIS SOLVES
+Four failures ran silently for weeks. A migration written but never
+applied — three weeks of review requests doing nothing. A OneSignal key
+holding the App ID instead of the REST key — three months of push
+notifications 401ing. A Resend domain never verified — three months of
+enquiry emails 403ing. A cron that has never once run. Not one of them
+threw anywhere a person looked, because the enquiry still SAVED every
+time. The site looked fine. The thing that was broken was the part that
+tells Thomas a lead came in.
+
+That is the whole finding of both audits, and it is not a code-quality
+problem. The code is careful. Nothing was watching it.
+
+WHY NOT REUSE integrations.ts
+Because it is what missed the outage. It answers "is X configured?" by
+checking the env var is present, and ONESIGNAL_REST_API_KEY was present
+the entire time — it just held the wrong value. Present is not correct.
+Every probe here proves the thing WORKS: it calls Resend and reads back
+whether the domain is verified, calls OneSignal with the REST key so a
+wrong one comes back 401, calls Twilio, and reads a row that only exists
+if the feature actually ran.
+
+Eight checks: email, push, SMS, Xero, schema, crons, notification reach,
+enquiry backlog. Each maps to a specific way this system has failed or
+could fail without anyone noticing. Notification reach exists because a
+push sent to zero subscribed devices SUCCEEDS — working and useless at
+the same time. The Xero check warns at 40 days and fails at 50 because
+Xero kills a refresh token at 60 days unused, so a quiet fortnight over
+Christmas takes the invoicing down with no error anywhere.
+
+ALERTS ON TRANSITION, NEVER ON STATE
+A monitor that pings every day gets muted, and a muted monitor is worse
+than none because it looks like coverage. This notifies when something
+breaks and again when it recovers. Nothing in between.  tracks
+when the current status began, so the message says "broken for 12 days"
+rather than "broken" — the first prompts action, the second gets
+postponed.
+
+notified_status is written only AFTER attempting to send, so a failed
+alert retries next run rather than being silently swallowed. A monitor
+that loses its own alerts commits the exact fault it exists to catch.
+
+Push and email fire independently: if push is the thing that broke, email
+is the only way the message arrives, and vice versa.
+
+NO NEW CRON SLOT
+Vercel Hobby allows two cron entries and both are used. Health runs at
+the end of job-reminders — last, and guarded, so the reminders people
+depend on can never be delayed or broken by the monitor. A broken monitor
+degrades to no monitor, never to a broken cron. Once a day is the right
+cadence for "has anything quietly stopped", and piggybacking means the
+monitor cannot itself be the thing that fails to get scheduled.
+
+/admin/health reads stored state so the page opens instantly instead of
+hammering four APIs on every refresh, with a "Run checks now" button for
+the fix-and-verify loop — the loop that was missing when the OneSignal
+key took three attempts to get right. That run passes notify:false: an
+admin looking at the answer does not need to be pushed it.
+
+VERIFIED AGAINST PRODUCTION
+Ran the five database-backed probes against live data. Four return ok.
+enquiry_backlog returns warn, correctly: 17 enquiries older than three
+days with no job created, the oldest from 6 May. That is the real cost of
+three months without notifications, and the new monitor found it on its
+first run.
+
+Verified: tsc --noEmit passes. Migration 0040 applied to production.
+---
+ src/app/admin/health/page.tsx              |  76 ++++
+ src/app/api/admin/health/route.ts          |  47 +++
+ src/app/api/cron/job-reminders/route.ts    |  24 +-
+ src/components/HealthPanel.tsx             | 158 ++++++++
+ src/lib/health.ts                          | 442 +++++++++++++++++++++
+ supabase/migrations/0040_health_checks.sql |  53 +++
+ 6 files changed, 799 insertions(+), 1 deletion(-)
+ create mode 100644 src/app/admin/health/page.tsx
+ create mode 100644 src/app/api/admin/health/route.ts
+ create mode 100644 src/components/HealthPanel.tsx
+ create mode 100644 src/lib/health.ts
+ create mode 100644 supabase/migrations/0040_health_checks.sql
+
+diff --git a/src/app/admin/health/page.tsx b/src/app/admin/health/page.tsx
+new file mode 100644
+index 0000000..527eaf6
+--- /dev/null
++++ b/src/app/admin/health/page.tsx
+@@ -0,0 +1,76 @@
++import { requireAdmin } from "@/lib/session";
++import { getServiceClient } from "@/lib/supabase";
++import HealthPanel, { type StoredCheck } from "@/components/HealthPanel";
++
++export const dynamic = "force-dynamic";
++
++// System health.
++//
++// Reads the stored results rather than probing on load — the page opens
++// instantly and does not call four third-party APIs every time someone
++// refreshes. "Run checks now" on the panel re-probes on demand.
++//
++// The labels live here rather than in lib/health.ts so the checker stays a
++// pure server module with no presentation in it; the keys are the contract
++// between the two.
++const LABELS: Record<string, { label: string; why: string }> = {
++  email: {
++    label: "Email sending",
++    why: "Enquiry notifications and review requests. Needs the domain verified in Resend, not just an API key.",
++  },
++  push: {
++    label: "Push notifications",
++    why: "New enquiries, job assignments, leave decisions. Proven by calling OneSignal, so a wrong key shows here.",
++  },
++  sms: {
++    label: "SMS",
++    why: "Client reminders the evening before a job, and manual templates from job pages.",
++  },
++  xero: {
++    label: "Xero connection",
++    why: "Invoices and quotes. Xero expires a refresh token after 60 days unused, so a quiet period breaks it silently.",
++  },
++  schema: {
++    label: "Database schema",
++    why: "Every table the running code needs. Catches a migration that was written but never applied.",
++  },
++  crons: {
++    label: "Scheduled jobs",
++    why: "The nightly reminder and hire-expiry sweeps. A cron that stops has no other symptom.",
++  },
++  push_reach: {
++    label: "Notification reach",
++    why: "Whether there is anyone for a notification to go to. A push to nobody still succeeds.",
++  },
++  enquiry_backlog: {
++    label: "Enquiry backlog",
++    why: "Leads sitting more than three days with no job created — the actual cost of a missed notification.",
++  },
++};
++
++export default async function AdminHealthPage() {
++  await requireAdmin();
++  const supabase = getServiceClient();
++
++  let checks: StoredCheck[] = [];
++  if (supabase) {
++    const { data } = await supabase
++      .from("health_checks")
++      .select("key, status, detail, since, checked_at");
++    checks = (data ?? []) as StoredCheck[];
++  }
++
++  return (
++    <div className="admin-page">
++      <header className="admin-page-head">
++        <h1>System health</h1>
++        <p className="admin-page-sub">
++          Checks that the parts you can&rsquo;t see are actually working. Runs once a
++          night and tells you only when something changes — no news is good news.
++        </p>
++      </header>
++
++      <HealthPanel initial={checks} labels={LABELS} />
++    </div>
++  );
++}
+diff --git a/src/app/api/admin/health/route.ts b/src/app/api/admin/health/route.ts
+new file mode 100644
+index 0000000..3758a0a
+--- /dev/null
++++ b/src/app/api/admin/health/route.ts
+@@ -0,0 +1,47 @@
++import { NextResponse } from "next/server";
++
++import { requireApiAdmin, requireSupabase } from "@/lib/api-auth";
++import { runAndReport } from "@/lib/health";
++
++export const runtime = "nodejs";
++export const dynamic = "force-dynamic";
++
++// GET  /api/admin/health   — last stored results (fast, no network)
++// POST /api/admin/health   — re-run every probe now
++//
++// GET reads the stored table rather than re-probing so opening the page is
++// instant and does not hammer four third-party APIs on every refresh. The
++// daily cron is what keeps it current; POST is for "I just fixed
++// something, tell me if it worked" — which is exactly the loop that was
++// missing when the OneSignal key took three attempts to get right.
++
++export async function GET() {
++  const auth = await requireApiAdmin();
++  if (auth instanceof NextResponse) return auth;
++  const supabase = requireSupabase();
++  if (supabase instanceof NextResponse) return supabase;
++
++  const { data, error } = await supabase
++    .from("health_checks")
++    .select("key, status, detail, since, checked_at")
++    .order("status", { ascending: true });  // 'fail' < 'ok' < 'warn' alphabetically; UI sorts properly
++
++  if (error) {
++    console.error("[admin/health GET]", error);
++    return NextResponse.json({ error: "Could not load health" }, { status: 500 });
++  }
++  return NextResponse.json({ checks: data ?? [] });
++}
++
++export async function POST() {
++  const auth = await requireApiAdmin();
++  if (auth instanceof NextResponse) return auth;
++  const supabase = requireSupabase();
++  if (supabase instanceof NextResponse) return supabase;
++
++  // notify:false — an admin watching the page is already aware. Pushing a
++  // notification at someone who is looking at the answer is how monitors
++  // become noise, and noisy monitors get muted.
++  const results = await runAndReport(supabase, { notify: false });
++  return NextResponse.json({ checks: results });
++}
+diff --git a/src/app/api/cron/job-reminders/route.ts b/src/app/api/cron/job-reminders/route.ts
+index ea5fe48..f8389c4 100644
+--- a/src/app/api/cron/job-reminders/route.ts
++++ b/src/app/api/cron/job-reminders/route.ts
+@@ -4,6 +4,7 @@ import { sendSms, normaliseAuPhone } from "@/lib/twilio";
+ import { sendPush } from "@/lib/onesignal";
+ import { sms } from "@/lib/sms-templates";
+ import { addDaysISO, todayISO } from "@/lib/dates";
++import { runAndReport } from "@/lib/health";
+ import type { Job } from "@/lib/types";
+ 
+ export const runtime = "nodejs";
+@@ -106,12 +107,32 @@ export async function GET(req: Request) {
+     }
+   }
+ 
++  // Health checks piggyback on this cron. Vercel Hobby allows two cron
++  // entries and both are already used, so there is no slot for a monitor
++  // of its own — and it does not need one. Once a day is the right
++  // cadence for "has anything quietly stopped working", and running it
++  // here means the monitor cannot be the thing that fails to be scheduled.
++  //
++  // Deliberately LAST and awaited-but-guarded: the reminders above are the
++  // job people depend on, so the monitor must never delay or break them.
++  // Any throw is caught and logged; a broken monitor degrades to no
++  // monitor, never to a broken cron.
++  let healthSummary: string | null = null;
++  try {
++    const results = await runAndReport(supabase, { notify: true });
++    const bad = results.filter((r) => r.status !== "ok");
++    healthSummary = bad.length === 0 ? "ok" : bad.map((b) => `${b.key}:${b.status}`).join(",");
++  } catch (e) {
++    console.error("[cron/job-reminders] health checks failed", e);
++    healthSummary = "checks-errored";
++  }
++
+   // Persist a summary on the cron_runs row for easy after-the-fact
+   // inspection ("did Tuesday's run actually send anything?"). Best
+   // effort — failure here doesn't undo the work above.
+   await supabase
+     .from("cron_runs")
+-    .update({ detail: { jobs: jobs.length, pushes_dispatched: pushSent, sms_dispatched: smsSent } })
++    .update({ detail: { jobs: jobs.length, pushes_dispatched: pushSent, sms_dispatched: smsSent, health: healthSummary } })
+     .eq("job_name", cronJobName)
+     .eq("run_date", today);
+ 
+@@ -121,6 +142,7 @@ export async function GET(req: Request) {
+     jobs: jobs.length,
+     pushes_dispatched: pushSent,
+     sms_dispatched: smsSent,
++    health: healthSummary,
+   });
+ }
+ 
+diff --git a/src/components/HealthPanel.tsx b/src/components/HealthPanel.tsx
+new file mode 100644
+index 0000000..02e747d
+--- /dev/null
++++ b/src/components/HealthPanel.tsx
+@@ -0,0 +1,158 @@
++"use client";
++
++import { useState } from "react";
++
++export type StoredCheck = {
++  key: string;
++  status: "ok" | "warn" | "fail";
++  detail: string;
++  since: string;
++  checked_at: string;
++};
++
++type Props = {
++  initial: StoredCheck[];
++  labels: Record<string, { label: string; why: string }>;
++};
++
++// Sort worst-first. Someone opening this page during a problem should see
++// the problem, not scroll past six green rows to find it.
++const RANK: Record<StoredCheck["status"], number> = { fail: 0, warn: 1, ok: 2 };
++
++const TONE: Record<StoredCheck["status"], { dot: string; text: string; word: string }> = {
++  fail: { dot: "#C0392B", text: "#7F1D1D", word: "Not working" },
++  warn: { dot: "#D97706", text: "#78350F", word: "Needs a look" },
++  ok:   { dot: "#1E8449", text: "#14532D", word: "Working" },
++};
++
++function age(iso: string): string {
++  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
++  if (mins < 1) return "just now";
++  if (mins < 60) return `${mins} min`;
++  const hrs = Math.floor(mins / 60);
++  if (hrs < 48) return `${hrs} hr`;
++  return `${Math.floor(hrs / 24)} days`;
++}
++
++export default function HealthPanel({ initial, labels }: Props) {
++  const [checks, setChecks] = useState<StoredCheck[]>(initial);
++  const [running, setRunning] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++
++  async function runNow() {
++    setRunning(true);
++    setError(null);
++    try {
++      const res = await fetch("/api/admin/health", { method: "POST" });
++      if (!res.ok) throw new Error(`Checks failed (${res.status})`);
++      const body = await res.json() as { checks: Array<{ key: string; status: StoredCheck["status"]; detail: string }> };
++      const now = new Date().toISOString();
++      // The POST returns fresh results without `since`; keep the existing
++      // one where the status is unchanged so the "broken for N days"
++      // figure survives a manual re-check.
++      setChecks((prev) => body.checks.map((r) => {
++        const before = prev.find((p) => p.key === r.key);
++        return {
++          key: r.key,
++          status: r.status,
++          detail: r.detail,
++          since: before && before.status === r.status ? before.since : now,
++          checked_at: now,
++        };
++      }));
++    } catch (e) {
++      setError(e instanceof Error ? e.message : "Could not run checks");
++    } finally {
++      setRunning(false);
++    }
++  }
++
++  const sorted = [...checks].sort((a, b) => RANK[a.status] - RANK[b.status]);
++  const problems = sorted.filter((c) => c.status !== "ok");
++  const lastChecked = checks.length > 0
++    ? checks.reduce((a, b) => (a.checked_at > b.checked_at ? a : b)).checked_at
++    : null;
++
++  return (
++    <div>
++      <div style={{
++        display: "flex", alignItems: "center", justifyContent: "space-between",
++        gap: 16, flexWrap: "wrap", marginBottom: 20,
++      }}>
++        <div>
++          {checks.length === 0 ? (
++            <strong style={{ color: "#78350F" }}>
++              No checks recorded yet — run them to populate this page.
++            </strong>
++          ) : problems.length === 0 ? (
++            <strong style={{ color: TONE.ok.text, fontSize: 17 }}>
++              Everything is working.
++            </strong>
++          ) : (
++            <strong style={{ color: TONE.fail.text, fontSize: 17 }}>
++              {problems.length} thing{problems.length > 1 ? "s need" : " needs"} attention
++            </strong>
++          )}
++          {lastChecked && (
++            <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
++              Last checked {age(lastChecked)} ago
++            </div>
++          )}
++        </div>
++
++        <button
++          type="button"
++          onClick={runNow}
++          disabled={running}
++          className="btn btn-primary"
++          style={{ opacity: running ? 0.6 : 1 }}
++        >
++          {running ? "Checking…" : "Run checks now"}
++        </button>
++      </div>
++
++      {error && (
++        <div style={{
++          background: "#FEF2F2", border: "1px solid #FECACA", color: "#7F1D1D",
++          padding: "10px 14px", borderRadius: 10, marginBottom: 16, fontSize: 14,
++        }}>{error}</div>
++      )}
++
++      <div style={{ display: "grid", gap: 10 }}>
++        {sorted.map((c) => {
++          const meta = labels[c.key] ?? { label: c.key, why: "" };
++          const tone = TONE[c.status];
++          return (
++            <div key={c.key} style={{
++              display: "grid", gridTemplateColumns: "12px 1fr auto", gap: 14,
++              alignItems: "start", background: "#fff", border: "1px solid #E5E7EB",
++              borderLeft: `4px solid ${tone.dot}`, borderRadius: 12, padding: "14px 16px",
++            }}>
++              <span aria-hidden="true" style={{
++                width: 10, height: 10, borderRadius: "50%",
++                background: tone.dot, marginTop: 6,
++              }} />
++              <div>
++                <div style={{ fontWeight: 700, color: "#0A1F3D" }}>{meta.label}</div>
++                <div style={{ color: tone.text, fontSize: 14, marginTop: 2 }}>{c.detail}</div>
++                {meta.why && (
++                  <div style={{ color: "#6B7280", fontSize: 12.5, marginTop: 6 }}>{meta.why}</div>
++                )}
++              </div>
++              <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
++                <div style={{ fontSize: 12, fontWeight: 700, color: tone.text }}>
++                  {tone.word}
++                </div>
++                {c.status !== "ok" && (
++                  <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
++                    for {age(c.since)}
++                  </div>
++                )}
++              </div>
++            </div>
++          );
++        })}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/lib/health.ts b/src/lib/health.ts
+new file mode 100644
+index 0000000..5dd5315
+--- /dev/null
++++ b/src/lib/health.ts
+@@ -0,0 +1,442 @@
++import type { SupabaseClient } from "@supabase/supabase-js";
++
++import { sendPush } from "@/lib/onesignal";
++import { sendEmail } from "@/lib/email";
++import { todayISO } from "@/lib/dates";
++
++// System health monitoring.
++//
++// THE PROBLEM THIS SOLVES
++// Four failures ran silently for weeks: an unapplied migration (3 weeks), a
++// wrong OneSignal key (3 months), an unverified Resend domain (3 months),
++// and a cron that has never run. None of them threw anywhere a person
++// looked. Enquiries kept saving, so the site looked fine; the notification
++// that should have told Thomas about them was the thing that was broken.
++//
++// WHY NOT REUSE integrations.ts
++// It answers "is X configured?" by checking the env var exists. That is
++// exactly what missed the OneSignal outage — ONESIGNAL_REST_API_KEY was
++// set the whole time, it just held the App ID instead of the REST key.
++// Present is not the same as correct. Every check below therefore proves
++// the thing WORKS: it calls the API, or reads a row that only exists if
++// the feature ran.
++//
++// DESIGN RULES
++//   1. Never throw. A monitor that breaks its host is worse than none.
++//      Every probe is wrapped; an unexpected error becomes a 'warn' with
++//      the message as detail, not an exception into the cron.
++//   2. Never block. Called with waitUntil/after semantics from a cron that
++//      has real work to do. Total budget is bounded by PROBE_TIMEOUT_MS.
++//   3. Alert on TRANSITION, not on state. A daily "all good" gets muted,
++//      and a muted alert looks like coverage while providing none. A check
++//      notifies when it breaks and again when it recovers. Nothing in
++//      between.
++//   4. Say how long. "Push has been broken for 12 days" prompts action;
++//      "push is broken" gets postponed. That is what `since` is for.
++
++export type HealthStatus = "ok" | "warn" | "fail";
++
++export type CheckResult = {
++  key: string;
++  label: string;
++  status: HealthStatus;
++  detail: string;
++};
++
++type StoredCheck = {
++  key: string;
++  status: HealthStatus;
++  detail: string;
++  since: string;
++  checked_at: string;
++  notified_status: HealthStatus | null;
++};
++
++/** Per-probe network timeout. Eight probes, so worst case ~40s if every
++ *  external service hangs — comfortably inside a serverless invocation,
++ *  and they run concurrently anyway. */
++const PROBE_TIMEOUT_MS = 5_000;
++
++/** Tables the running code requires. A missing one means a migration in
++ *  the repo was never applied — the review_requests failure, which cost
++ *  three weeks of review requests silently doing nothing. */
++const REQUIRED_TABLES = [
++  "enquiries", "clients", "jobs", "users", "roster",
++  "leave_requests", "leave_balances", "daily_timesheets",
++  "worker_paid_hours", "review_requests", "equipment", "reservations",
++  "notifications", "sms_log", "cron_runs", "health_checks",
++] as const;
++
++async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
++  const ctrl = new AbortController();
++  const timer = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS);
++  try {
++    return await fetch(url, { ...init, signal: ctrl.signal, cache: "no-store" });
++  } finally {
++    clearTimeout(timer);
++  }
++}
++
++/** Wraps a probe so a thrown error becomes a result rather than an
++ *  exception. Deliberately 'warn' and not 'fail': we could not determine
++ *  the state, which is not the same as knowing it is broken, and crying
++ *  wolf is how monitors get ignored. */
++async function safe(
++  key: string,
++  label: string,
++  fn: () => Promise<Omit<CheckResult, "key" | "label">>,
++): Promise<CheckResult> {
++  try {
++    const r = await fn();
++    return { key, label, ...r };
++  } catch (e) {
++    const msg = e instanceof Error ? e.message : String(e);
++    return {
++      key, label,
++      status: "warn",
++      detail: `Check could not run: ${msg}`,
++    };
++  }
++}
++
++// ── Probes ──────────────────────────────────────────────────────────────
++
++/** Resend. Proves the domain is VERIFIED, not merely that a key exists —
++ *  the domain sat unverified for three months while the key was fine, and
++ *  every enquiry notification 403'd. */
++async function checkEmail(): Promise<Omit<CheckResult, "key" | "label">> {
++  const apiKey = process.env.RESEND_API_KEY;
++  const from = process.env.RESEND_FROM;
++  if (!apiKey || !from) {
++    return { status: "fail", detail: "RESEND_API_KEY or RESEND_FROM is not set — no email can be sent." };
++  }
++
++  const res = await fetchWithTimeout("https://api.resend.com/domains", {
++    headers: { Authorization: `Bearer ${apiKey}` },
++  });
++  if (res.status === 401 || res.status === 403) {
++    return { status: "fail", detail: "Resend rejected the API key." };
++  }
++  if (!res.ok) {
++    return { status: "warn", detail: `Resend returned ${res.status}.` };
++  }
++
++  // The from-address domain is the one that has to be verified. Parsing it
++  // out of RESEND_FROM rather than hardcoding means this keeps working if
++  // the sending address ever moves.
++  const domain = (from.match(/@([^\s>]+)/)?.[1] ?? "").toLowerCase();
++  const body = await res.json().catch(() => null) as { data?: Array<{ name?: string; status?: string }> } | null;
++  const match = body?.data?.find((d) => (d.name ?? "").toLowerCase() === domain);
++
++  if (!match) {
++    return { status: "fail", detail: `${domain} is not registered in Resend — email will 403.` };
++  }
++  if (match.status !== "verified") {
++    return { status: "fail", detail: `${domain} is "${match.status}" in Resend, not verified — email will 403.` };
++  }
++  return { status: "ok", detail: `Sending as ${domain} (verified).` };
++}
++
++/** OneSignal. Calls the API with the REST key, which is the only way to
++ *  tell a correct key from a wrong one — the App ID was pasted into the
++ *  REST key slot and sat there for three months returning 401. */
++async function checkPush(): Promise<Omit<CheckResult, "key" | "label">> {
++  const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
++  const restKey = process.env.ONESIGNAL_REST_API_KEY;
++  if (!appId || !restKey) {
++    return { status: "fail", detail: "OneSignal app ID or REST key is not set — no push can be sent." };
++  }
++  if (appId === restKey) {
++    return { status: "fail", detail: "REST key is set to the App ID. They are different values — copy the REST API Key from Keys & IDs." };
++  }
++
++  const res = await fetchWithTimeout(`https://onesignal.com/api/v1/apps/${appId}`, {
++    headers: { Authorization: `Basic ${restKey}` },
++  });
++  if (res.status === 401 || res.status === 403) {
++    return { status: "fail", detail: "OneSignal rejected the REST key — push notifications are not being delivered." };
++  }
++  if (!res.ok) {
++    return { status: "warn", detail: `OneSignal returned ${res.status}.` };
++  }
++  return { status: "ok", detail: "REST key accepted." };
++}
++
++/** Twilio. Same reasoning — credentials present tells you nothing. */
++async function checkSms(): Promise<Omit<CheckResult, "key" | "label">> {
++  const sid = process.env.TWILIO_ACCOUNT_SID;
++  const token = process.env.TWILIO_AUTH_TOKEN;
++  if (!sid || !token || !process.env.TWILIO_FROM_NUMBER) {
++    return { status: "warn", detail: "Twilio is not fully configured — client SMS reminders are off." };
++  }
++  const res = await fetchWithTimeout(
++    `https://api.twilio.com/2010-04-01/Accounts/${sid}.json`,
++    { headers: { Authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}` } },
++  );
++  if (res.status === 401) {
++    return { status: "fail", detail: "Twilio rejected the credentials — no SMS is being sent." };
++  }
++  if (!res.ok) {
++    return { status: "warn", detail: `Twilio returned ${res.status}.` };
++  }
++  return { status: "ok", detail: "Credentials accepted." };
++}
++
++/** Xero. Refresh tokens are single-use and die after 60 days unused, so a
++ *  quiet period kills the connection with no error anywhere — you only
++ *  find out when an invoice fails to send. */
++async function checkXero(supabase: SupabaseClient): Promise<Omit<CheckResult, "key" | "label">> {
++  const { data } = await supabase
++    .from("xero_tokens")
++    .select("expires_at, updated_at")
++    .order("updated_at", { ascending: false })
++    .limit(1)
++    .maybeSingle();
++
++  if (!data) {
++    return { status: "warn", detail: "Xero is not connected — invoices cannot be sent from the app." };
++  }
++  const refreshedDaysAgo = Math.floor(
++    (Date.now() - new Date(data.updated_at as string).getTime()) / 86_400_000,
++  );
++  // Xero invalidates a refresh token after 60 days without use. Warn well
++  // before that so there is time to act rather than time to discover.
++  if (refreshedDaysAgo >= 50) {
++    return {
++      status: "fail",
++      detail: `Xero token last refreshed ${refreshedDaysAgo} days ago. Xero expires refresh tokens at 60 days — reconnect now or the link drops.`,
++    };
++  }
++  if (refreshedDaysAgo >= 40) {
++    return { status: "warn", detail: `Xero token last refreshed ${refreshedDaysAgo} days ago (expires at 60).` };
++  }
++  return { status: "ok", detail: `Connected, refreshed ${refreshedDaysAgo} day(s) ago.` };
++}
++
++/** Schema drift. Catches the exact failure that lost three weeks of review
++ *  requests: a migration sitting in the repo, never applied, and the code
++ *  calling a table that was not there. */
++async function checkSchema(supabase: SupabaseClient): Promise<Omit<CheckResult, "key" | "label">> {
++  const missing: string[] = [];
++  await Promise.all(REQUIRED_TABLES.map(async (t) => {
++    const { error } = await supabase.from(t).select("*", { head: true, count: "exact" }).limit(1);
++    // PGRST205 is "table not found in schema cache" — the signature of an
++    // unapplied migration, as opposed to a permissions or network error.
++    if (error && error.code === "PGRST205") missing.push(t);
++  }));
++
++  if (missing.length > 0) {
++    return {
++      status: "fail",
++      detail: `Missing table(s): ${missing.join(", ")}. A migration in the repo has not been applied.`,
++    };
++  }
++  return { status: "ok", detail: `All ${REQUIRED_TABLES.length} required tables present.` };
++}
++
++/** Cron liveness. A scheduled job that silently stops is invisible by
++ *  definition — hire-expiry could stop tomorrow and the only symptom would
++ *  be tools staying "held" forever. */
++async function checkCrons(supabase: SupabaseClient): Promise<Omit<CheckResult, "key" | "label">> {
++  const { data } = await supabase
++    .from("cron_runs")
++    .select("job_name, run_date")
++    .order("run_date", { ascending: false })
++    .limit(60);
++
++  const rows = data ?? [];
++  const stale: string[] = [];
++  // Only jobs that have EVER run are checked. A job that has never run at
++  // all is a deployment problem, not a liveness problem, and reporting it
++  // here every day would be noise — shift-reminder is unscheduled because
++  // Vercel Hobby allows two crons and both are used.
++  for (const job of ["job-reminders", "hire-expiry"]) {
++    const last = rows.find((r) => r.job_name === job);
++    if (!last) continue;
++    const days = Math.floor(
++      (Date.now() - new Date(`${last.run_date}T00:00:00Z`).getTime()) / 86_400_000,
++    );
++    if (days >= 2) stale.push(`${job} (${days}d)`);
++  }
++  if (stale.length > 0) {
++    return { status: "fail", detail: `Cron has not run: ${stale.join(", ")}.` };
++  }
++  return { status: "ok", detail: "Scheduled jobs running." };
++}
++
++/** Push reach. The key can be valid while nobody is subscribed — a push
++ *  sent to zero devices succeeds. Catches "notifications work" being true
++ *  and useless at the same time. */
++async function checkPushReach(supabase: SupabaseClient): Promise<Omit<CheckResult, "key" | "label">> {
++  const { count } = await supabase
++    .from("users")
++    .select("id", { head: true, count: "exact" })
++    .eq("role", "admin")
++    .eq("active", true);
++  if (!count || count === 0) {
++    return { status: "fail", detail: "No active admin users — enquiry notifications have nobody to go to." };
++  }
++  return { status: "ok", detail: `${count} active admin(s) to notify.` };
++}
++
++/** Enquiry backlog. The business reason all of this exists: a lead that
++ *  nobody answers is the actual cost of a broken notification. */
++async function checkEnquiryBacklog(supabase: SupabaseClient): Promise<Omit<CheckResult, "key" | "label">> {
++  const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
++  const { count } = await supabase
++    .from("enquiries")
++    .select("id", { head: true, count: "exact" })
++    .is("converted_to_job_id", null)
++    .lt("created_at", threeDaysAgo);
++
++  const n = count ?? 0;
++  if (n >= 5) {
++    return { status: "warn", detail: `${n} enquiries older than 3 days with no job created.` };
++  }
++  return { status: "ok", detail: n === 0 ? "No ageing enquiries." : `${n} ageing enquiry(s).` };
++}
++
++// ── Runner ──────────────────────────────────────────────────────────────
++
++export async function runHealthChecks(supabase: SupabaseClient): Promise<CheckResult[]> {
++  return Promise.all([
++    safe("email",           "Email sending",     checkEmail),
++    safe("push",            "Push notifications", checkPush),
++    safe("sms",             "SMS",               checkSms),
++    safe("xero",            "Xero connection",   () => checkXero(supabase)),
++    safe("schema",          "Database schema",   () => checkSchema(supabase)),
++    safe("crons",           "Scheduled jobs",    () => checkCrons(supabase)),
++    safe("push_reach",      "Notification reach", () => checkPushReach(supabase)),
++    safe("enquiry_backlog", "Enquiry backlog",   () => checkEnquiryBacklog(supabase)),
++  ]);
++}
++
++/**
++ * Runs every check, persists the results, and notifies only on a change of
++ * state. Returns the results so a caller (the admin page's manual run) can
++ * display them.
++ *
++ * `notify: false` is used by the admin page — a human looking at the page
++ * is already aware, so re-running the checks there must not fire a push.
++ */
++export async function runAndReport(
++  supabase: SupabaseClient,
++  opts: { notify: boolean } = { notify: true },
++): Promise<CheckResult[]> {
++  const results = await runHealthChecks(supabase);
++
++  const { data: priorRows } = await supabase
++    .from("health_checks")
++    .select("key, status, detail, since, checked_at, notified_status");
++  const prior = new Map<string, StoredCheck>(
++    ((priorRows ?? []) as StoredCheck[]).map((r) => [r.key, r]),
++  );
++
++  const nowIso = new Date().toISOString();
++  const transitioned: Array<{ result: CheckResult; since: string }> = [];
++
++  for (const r of results) {
++    const before = prior.get(r.key);
++    const statusChanged = !before || before.status !== r.status;
++    // `since` only moves when the STATUS changes, not when the detail
++    // does — otherwise "broken for 12 days" resets every time the message
++    // gains a day count, which is the number that makes someone act.
++    const since = statusChanged ? nowIso : before.since;
++
++    await supabase.from("health_checks").upsert({
++      key: r.key,
++      status: r.status,
++      detail: r.detail,
++      since,
++      checked_at: nowIso,
++      // Preserve what we last told anyone; the notify step below updates it.
++      notified_status: before?.notified_status ?? null,
++    }, { onConflict: "key" });
++
++    // Notify on a change against what was last ANNOUNCED, not against the
++    // last check. If a push failed to send, the next run tries again
++    // instead of assuming the message landed.
++    if (r.status !== (before?.notified_status ?? "ok")) {
++      transitioned.push({ result: r, since });
++    }
++  }
++
++  if (opts.notify && transitioned.length > 0) {
++    await announce(supabase, transitioned, nowIso).catch((e) =>
++      console.error("[health] announce failed", e),
++    );
++  }
++
++  return results;
++}
++
++function humanAge(sinceIso: string): string {
++  const mins = Math.floor((Date.now() - new Date(sinceIso).getTime()) / 60_000);
++  if (mins < 60) return `${mins}m`;
++  const hrs = Math.floor(mins / 60);
++  if (hrs < 48) return `${hrs}h`;
++  return `${Math.floor(hrs / 24)}d`;
++}
++
++async function announce(
++  supabase: SupabaseClient,
++  items: Array<{ result: CheckResult; since: string }>,
++  nowIso: string,
++): Promise<void> {
++  const broke = items.filter((i) => i.result.status !== "ok");
++  const fixed = items.filter((i) => i.result.status === "ok");
++
++  const title = broke.length > 0
++    ? (broke.some((b) => b.result.status === "fail")
++        ? `⚠️ ${broke.length} system issue${broke.length > 1 ? "s" : ""}`
++        : `${broke.length} system warning${broke.length > 1 ? "s" : ""}`)
++    : `✅ Back to normal`;
++
++  const lines = [
++    ...broke.map((b) => `${b.result.label}: ${b.result.detail}`),
++    ...fixed.map((f) => `${f.result.label}: recovered after ${humanAge(f.since)}`),
++  ];
++  const message = lines.join("\n");
++
++  const { data: admins } = await supabase
++    .from("users").select("id").eq("role", "admin").eq("active", true);
++  const adminIds = (admins ?? []).map((u) => u.id);
++
++  // Push first: it is the channel most likely to be working, and the one
++  // Thomas actually sees. Email second and independently — if push is the
++  // thing that broke, the email is the only way this message arrives, and
++  // vice versa. Neither failure may stop the other.
++  if (adminIds.length > 0) {
++    await sendPush(
++      { user_ids: adminIds, title, message, deep_link: "/admin/health" },
++      supabase,
++    ).catch((e) => console.error("[health] push failed", e));
++  }
++
++  const to = process.env.ENQUIRY_NOTIFY_EMAIL;
++  if (to) {
++    await sendEmail({
++      to,
++      subject: `${title} — T.R. Depledge`,
++      html: `<p>${lines.map(escapeHtml).join("<br>")}</p>
++             <p style="color:#666;font-size:13px">Checked ${new Date(nowIso).toLocaleString("en-AU", { timeZone: "Australia/Adelaide" })} · ${todayISO()}</p>`,
++      text: message,
++    }).catch((e) => console.error("[health] email failed", e));
++  }
++
++  // Only record what we announced AFTER attempting to send. A failed send
++  // leaves notified_status untouched so the next run retries rather than
++  // silently swallowing the alert — which would be this system committing
++  // the exact fault it exists to catch.
++  for (const i of items) {
++    await supabase.from("health_checks")
++      .update({ notified_status: i.result.status, notified_at: nowIso })
++      .eq("key", i.result.key);
++  }
++}
++
++function escapeHtml(s: string): string {
++  return s
++    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
++    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
++}
+diff --git a/supabase/migrations/0040_health_checks.sql b/supabase/migrations/0040_health_checks.sql
+new file mode 100644
+index 0000000..bff83af
+--- /dev/null
++++ b/supabase/migrations/0040_health_checks.sql
+@@ -0,0 +1,53 @@
++-- Health monitoring state.
++--
++-- WHY THIS EXISTS
++-- Four failures ran silently for weeks before anyone noticed: a migration
++-- that was never applied (3 weeks), a OneSignal key that was wrong from the
++-- day it was set (3 months), a Resend domain that was never verified (3
++-- months), and a cron that has never once run. Every one of them was
++-- invisible because nothing was looking.
++--
++-- The existing integrations.ts answers "is X configured?" by checking the
++-- env var is present. That is precisely what missed the OneSignal outage:
++-- the variable WAS present, it just held the wrong value. So the checks
++-- that write to this table prove liveness by calling the API, not by
++-- reading config.
++--
++-- ONE ROW PER CHECK, updated in place. This is current state, not a log —
++-- the interesting history (what broke, when) is `since`, and the audit
++-- trail people actually read is the notification they were sent.
++create table if not exists public.health_checks (
++  key              text        primary key,
++
++  -- 'ok' | 'warn' | 'fail'. warn is for things that are degrading but
++  -- still working — a Xero token three days from expiry, a backlog that
++  -- is growing. fail is for something a customer or worker would notice.
++  status           text        not null,
++  detail           text        not null default '',
++
++  -- When the CURRENT status began. Not the last check time — this is what
++  -- turns "push is broken" into "push has been broken for 12 days", which
++  -- is the number that makes someone act.
++  since            timestamptz not null default now(),
++  checked_at       timestamptz not null default now(),
++
++  -- The status we last sent a notification for. Alerting compares against
++  -- this rather than against the previous check, so a failure notifies
++  -- once when it starts and once when it clears — never daily. A monitor
++  -- that pings every day gets muted, and a muted monitor is worse than no
++  -- monitor because it looks like coverage.
++  notified_status  text,
++  notified_at      timestamptz,
++
++  constraint health_checks_status_valid
++    check (status in ('ok', 'warn', 'fail')),
++  constraint health_checks_notified_valid
++    check (notified_status is null or notified_status in ('ok', 'warn', 'fail'))
++);
++
++-- Service-role only, matching cron_runs. The admin UI reads through a
++-- server route, never with the anon key.
++alter table public.health_checks enable row level security;
++
++comment on table public.health_checks is
++  'Current state of each system health check. One row per check, updated in place. See lib/health.ts.';
+-- 
+2.43.0
+
