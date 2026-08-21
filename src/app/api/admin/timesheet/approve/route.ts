@@ -157,6 +157,7 @@ async function handleDay(supabase: SupabaseClient, adminId: string, input: PerDa
       approved_hours:      input.approved_hours ?? null,
       admin_note:          input.admin_note ?? null,
     },
+    alreadyApproved: Boolean(row.approved_at),
   });
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 500 });
@@ -198,6 +199,7 @@ async function handleWeek(supabase: SupabaseClient, adminId: string, input: PerW
         approved_hours: override?.approved_hours ?? null,
         admin_note: override?.admin_note ?? null,
       },
+      alreadyApproved: Boolean(r.approved_at),
     });
     if (result.ok) approvedCount += 1;
     else errors.push(`${r.work_date}: ${result.error}`);
@@ -223,6 +225,10 @@ type ApplyArgs = {
     approved_hours: number | null;
     admin_note: string | null;
   };
+  // True when this day already carried an approval. Used to skip the
+  // leave-balance increment, which is additive and would otherwise
+  // double-charge the worker on every re-approval.
+  alreadyApproved: boolean;
 };
 
 async function applyApproval(
@@ -277,8 +283,17 @@ async function applyApproval(
   }
 
   // 3. Leave balance: increment the matching used counter.
+  //
+  // ONLY ON FIRST APPROVAL. increment_leave_balance adds to a running
+  // total, unlike the worker_paid_hours upsert above which is keyed on
+  // (worker_id, work_date) and so is naturally idempotent. Re-approving a
+  // day — correcting the hours, fixing a typo in the note — used to run
+  // this a second time and charge the worker the same day of leave twice.
+  // Nothing surfaced it: the balance is a plain counter with no audit of
+  // what fed it, so the only symptom is a worker being short on
+  // entitlement months later.
   const balanceCol = LEAVE_BALANCE_COLUMN[effectiveType];
-  if (balanceCol) {
+  if (balanceCol && !args.alreadyApproved) {
     // Convert hours → days for the balance (8h workday assumed).
     // Round to nearest whole day to keep the existing balance
     // schema (integer days) happy.

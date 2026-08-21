@@ -42,18 +42,30 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Request already actioned" }, { status: 409 });
   }
 
-  const { error: updateErr } = await supabase
+  // Conditioned on `status = 'pending'` so the database, not the read
+  // above, decides who wins. The 409 a few lines up can only report what
+  // was true a moment ago: two admins actioning the same request — or one
+  // admin double-tapping on a slow connection — would both pass that
+  // check and both fall through to the balance increment below, deducting
+  // the same leave twice. `.select()` distinguishes a real claim from a
+  // loser, since Supabase reports success either way.
+  const { data: claimed, error: updateErr } = await supabase
     .from("leave_requests")
     .update({
       status,
       reviewed_at: new Date().toISOString(),
       reviewed_by: session.user.id,
     })
-    .eq("id", params.id);
+    .eq("id", params.id)
+    .eq("status", "pending")
+    .select("id");
 
   if (updateErr) {
     console.error("[admin/leave PATCH]", updateErr);
     return NextResponse.json({ error: "Could not update" }, { status: 500 });
+  }
+  if (!claimed || claimed.length === 0) {
+    return NextResponse.json({ error: "Request already actioned" }, { status: 409 });
   }
 
   // Update the running tally on approval. Work-day counting (skip
