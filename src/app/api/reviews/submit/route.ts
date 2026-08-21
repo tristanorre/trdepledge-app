@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServiceClient } from "@/lib/supabase";
 import { sendEmail } from "@/lib/email";
 import { googleReviewUrl } from "@/lib/reviews";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,20 @@ export const runtime = "nodejs";
 // second submission for the same token returns 409 so someone
 // sharing the link can't overwrite the original response.
 export async function POST(req: Request) {
+  // The other three public endpoints are rate limited; this one wasn't.
+  // A 128-bit token isn't brute-forceable, so this is about keeping an
+  // unauthenticated write path from being hammered rather than about
+  // guessing tokens. Generous enough that a customer who mis-taps and
+  // retries a few times is never blocked.
+  const ip = clientIp(req);
+  const limit = rateLimit(`reviews-submit:${ip}`, { max: 10, windowMs: 10 * 60 * 1000 });
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many attempts, try again shortly." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(limit.resetMs / 1000)) } },
+    );
+  }
+
   const supabase = getServiceClient();
   if (!supabase) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
 
@@ -47,7 +62,14 @@ export async function POST(req: Request) {
 
   const routeToGoogle = rating >= 4;
 
-  const { error: updErr } = await supabase
+  // `.is("responded_at", null)` makes the claim atomic. The read above can
+  // only tell us the row was unanswered a moment ago; two submissions racing
+  // on the same token would both pass that check and both write, so the 409
+  // was advisory rather than enforced. Conditioning the UPDATE itself means
+  // the database decides the winner — the loser matches zero rows and gets
+  // the same 409 as a plain replay. `.select()` is what lets us tell the two
+  // apart, since Supabase reports success either way.
+  const { data: claimed, error: updErr } = await supabase
     .from("review_requests")
     .update({
       responded_at: new Date().toISOString(),
@@ -55,10 +77,15 @@ export async function POST(req: Request) {
       private_feedback: privateFeedback,
       redirected_to_google: routeToGoogle,
     })
-    .eq("id", reqRow.id);
+    .eq("id", reqRow.id)
+    .is("responded_at", null)
+    .select("id");
   if (updErr) {
     console.error("[reviews/submit] update", updErr);
     return NextResponse.json({ error: "Could not save" }, { status: 500 });
+  }
+  if (!claimed || claimed.length === 0) {
+    return NextResponse.json({ error: "Already responded" }, { status: 409 });
   }
 
   // Notify Thomas for every response so he sees ratings land in real
