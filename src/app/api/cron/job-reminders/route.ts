@@ -9,7 +9,20 @@ import type { Job } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Vercel Cron entry point. Runs at 18:00 every day (config in vercel.json).
+// Vercel Cron entry point. Scheduled `30 8 * * *` in vercel.json.
+//
+// THAT IS 08:30 UTC, WHICH IS 18:00 IN ADELAIDE — deliberate, not a typo.
+// Vercel runs crons in UTC and offers no timezone setting, so the local
+// time has to be worked out by hand: Adelaide is UTC+9:30. Six in the
+// evening is the point of it — this reminds people about TOMORROW, so it
+// wants to land after the day's work, not during it.
+//
+// It drifts an hour over summer. Adelaide moves to UTC+10:30 for daylight
+// saving, so from October to April this fires at 19:00 instead. Left as
+// is: an hour either side of six is still an evening reminder, and the
+// alternatives both cost more than the drift is worth — either a second
+// cron entry (Hobby allows two, and both are already used) or running
+// hourly and returning early unless the Adelaide hour matches.
 //
 // Two responsibilities per spec:
 //   1. SMS the client a reminder for tomorrow's job

@@ -7,7 +7,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Vercel Cron entry point — releases pending hire requests whose 24 hours
-// are up (schedule in vercel.json).
+// are up. Scheduled `15 9 * * *` in vercel.json, which is 09:15 UTC and so
+// 18:45 in Adelaide (UTC+9:30, or 19:45 over summer when it shifts to
+// +10:30). Vercel runs crons in UTC with no timezone option, so the local
+// time is worked out by hand — see the same note on job-reminders. The
+// exact minute barely matters here: this is a daily sweep, and a hold that
+// expires at noon simply sits until the evening pass. It runs 45 minutes
+// after the job reminders so the two never contend for the same instance.
 //
 // The public page promises "your dates are held while Thomas confirms", so
 // pending reservations genuinely occupy the calendar. Without this sweep,

@@ -87,10 +87,22 @@ export default function ContactPage({
               </Reveal>
 
               <Reveal delay={2} className="hours-card">
+                {/*
+                  Mon–Fri only. This used to advertise Saturday 7am–12pm and
+                  "Sunday by arrangement", which contradicted both the
+                  LocalBusiness schema in the marketing layout and
+                  CLOSED_DAY_INDICES in the hire config — the availability
+                  engine rejects any collection or return on a weekend, so a
+                  customer reading Saturday here would have been turned away
+                  by the booking form. Settled as closed. All three sources
+                  now agree, and so must the Google Business Profile: a
+                  mismatch between the site and the profile gets the profile
+                  flagged.
+                */}
                 <div className="hours-title">⏰ Operating Hours</div>
                 <div className="hours-row"><span className="day">Monday – Friday</span><span>7:00am – 5:00pm</span></div>
-                <div className="hours-row"><span className="day">Saturday</span><span>7:00am – 12:00pm</span></div>
-                <div className="hours-row"><span className="day">Sunday</span><span>By arrangement</span></div>
+                <div className="hours-row"><span className="day">Saturday</span><span>Closed</span></div>
+                <div className="hours-row"><span className="day">Sunday</span><span>Closed</span></div>
                 <div style={{ fontSize: 12, color: "var(--navy)", opacity: 0.6, marginTop: 12 }}>
                   Emergency or urgent jobs — please call directly.
                 </div>
