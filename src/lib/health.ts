@@ -280,20 +280,47 @@ async function checkPushReach(supabase: SupabaseClient): Promise<Omit<CheckResul
 }
 
 /** Enquiry backlog. The business reason all of this exists: a lead that
- *  nobody answers is the actual cost of a broken notification. */
+ *  nobody answers is the actual cost of a broken notification.
+ *
+ *  COUNTS UNOPENED ENQUIRIES, NOT UNCONVERTED ONES. It used to ask for
+ *  `converted_to_job_id is null`, which conflates two opposite things: a
+ *  lead nobody has looked at, and a lead Thomas answered and correctly
+ *  decided not to quote. Most enquiries never become jobs — wrong side of
+ *  the peninsula, out of scope, price didn't suit — and that is a normal
+ *  outcome, not a fault.
+ *
+ *  The practical effect was worse than a wrong number. Closed enquiries
+ *  never convert and never age out, so the count could only ever climb: at
+ *  the time this was fixed it read 18, of which 9 were closed, 7 contacted
+ *  and 2 genuinely unopened. The check was on its way to warning forever,
+ *  which is the exact failure the notification design warns about — a
+ *  monitor nobody can clear gets ignored, and an ignored monitor is worse
+ *  than none because it looks like coverage.
+ *
+ *  `status = 'new'` is the unambiguous signal: the enquiry arrived and
+ *  nobody has touched it. That is the state a broken notification actually
+ *  produces. `contacted` is deliberately excluded — an open quote waiting on
+ *  a customer is normal business, and counting it would rebuild the same
+ *  permanent amber more slowly. The `converted_to_job_id` filter stays as a
+ *  belt-and-braces guard against a half-written conversion leaving a row
+ *  marked new. */
 async function checkEnquiryBacklog(supabase: SupabaseClient): Promise<Omit<CheckResult, "key" | "label">> {
   const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
   const { count } = await supabase
     .from("enquiries")
     .select("id", { head: true, count: "exact" })
+    .eq("status", "new")
     .is("converted_to_job_id", null)
     .lt("created_at", threeDaysAgo);
 
   const n = count ?? 0;
   if (n >= 5) {
-    return { status: "warn", detail: `${n} enquiries older than 3 days with no job created.` };
+    return { status: "warn", detail: `${n} enquiries older than 3 days that nobody has opened.` };
   }
-  return { status: "ok", detail: n === 0 ? "No ageing enquiries." : `${n} ageing enquiry(s).` };
+  return {
+    status: "ok",
+    detail: n === 0 ? "No unopened enquiries." : `${n} unopened enquiry(s) over 3 days old.`,
+  };
 }
 
 // ── Runner ──────────────────────────────────────────────────────────────
