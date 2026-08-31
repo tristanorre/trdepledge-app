@@ -12,6 +12,7 @@ import {
   today,
 } from "@/lib/hire";
 import { loadHireCatalogue } from "@/lib/hire/repo";
+import { getSession } from "@/lib/session";
 import { getServiceClient } from "@/lib/supabase";
 
 // Availability changes hourly and "today" has to be resolved per request —
@@ -32,20 +33,27 @@ const STEPS = [
 
 /**
  * `/hire?debug=catalogue` prints what the SERVER read, before any of it
- * reaches the browser.
+ * reaches the browser. ADMIN SESSION REQUIRED — see the check in the page.
  *
- * It exists because the Lawn Mower's "View the flyer" link is missing on
- * production while its `flyer_path` is plainly set in the database, the file
- * plainly serves, and the button is gated on that value and nothing else.
+ * It exists because the Lawn Mower's "View the flyer" link was missing on
+ * production while its `flyer_path` was plainly set in the database, the file
+ * plainly served, and the button was gated on that value and nothing else.
  * Every one of those was checked from the outside and agreed; the one thing
- * nobody could see was what this page actually receives. Guessing at that
- * from the source cost several rounds, so now it says.
+ * nobody could see was what this page actually receives. It turned out the
+ * page had not read the database in six hours — Next.js was serving a cached
+ * fetch — and this view is what made that visible. Worth keeping for the
+ * next time the source and the symptom disagree.
  *
- * Safe to leave in place. It prints published equipment only — the same rows
- * the page already renders — and paths that are already public URLs. No
- * customer detail is anywhere near this code path. The commit is included
- * because "is the deploy even current?" was a live question for most of the
- * hunt and took far too long to rule out.
+ * WHY IT IS GATED NOW. It was open while /hire was unlisted and noindex,
+ * which was fine. Launch makes the page public and indexable, and this prints
+ * the deployed commit and internal file paths — no customer detail, nothing
+ * that grants access, but a needlessly specific description of the
+ * deployment to hand a stranger. Requiring a session costs nothing: the
+ * person who needs it is signed into the admin console in another tab.
+ *
+ * Deliberately silent for everyone else. A wrong or missing session renders
+ * the ordinary page rather than an error, so the parameter reveals nothing
+ * about whether it exists.
  */
 function CatalogueDebug({
   entries,
@@ -105,9 +113,15 @@ export default async function HirePage({
   // tools" — see the empty state in HireApp.
   const catalogueLoaded = supabase !== null;
 
+  // The session is only looked up when the parameter is actually present, so
+  // an ordinary visitor never pays for an auth round trip on a public page.
+  const showDebug =
+    searchParams?.debug === "catalogue" &&
+    (await getSession())?.user.role === "admin";
+
   return (
     <>
-      {searchParams?.debug === "catalogue" && (
+      {showDebug && (
         <CatalogueDebug
           entries={catalogue.entries}
           today={catalogue.today}
