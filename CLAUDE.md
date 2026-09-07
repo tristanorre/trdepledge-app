@@ -48,7 +48,8 @@ Both ship from one Vercel deploy on different subdomains.
 
 ### Photos use signed URLs, not public storage
 - `job-photos` is a private Supabase Storage bucket.
-- Server pages call `signPhotoUrls(supabase, paths)` (1-hour TTL) to render.
+- Server pages call `signPhotoUrls(supabase, paths)` (8-hour TTL — long enough
+  that a job page opened at the morning briefing still renders at knock-off) to render.
 - API routes upload server-side via service role; never expose direct client
   uploads with the anon key.
 

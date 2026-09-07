@@ -32,13 +32,30 @@
 -- them skips them.
 --
 -- So these read as though a logged-in worker could fetch their own job
--- photos directly, and no role can currently do that. Nothing is broken by
--- it — the bucket is private, and the app signs URLs server-side through the
--- service role (`signPhotoUrls`), which is the only path that has ever been
--- used. But if direct-from-browser access is ever wanted, the missing piece
--- is `grant usage on schema app to authenticated`, and that is a deliberate
--- widening of the anon key's reach, not a fix to slip into a transcription.
--- Left alone here on purpose.
+-- photos directly, and no role can currently do that. THESE POLICIES ARE
+-- DOCUMENTATION OF INTENT, NOT LIVE ENFORCEMENT. Do not read a permission
+-- question off them and assume the database is answering it that way.
+--
+-- SERVER-SIDE SIGNED URLS ARE THE ONLY SUPPORTED PATH to a job photo. The
+-- bucket is private; `signPhotoUrls` in src/lib/storage.ts issues 8-hour
+-- URLs through the service role, and /api/jobs/[id]/photos enforces the
+-- same ownership rule twice over — route scoping plus the RPC's own
+-- `p_worker_id is null or assigned_worker_ids @> array[p_worker_id]`
+-- (0014), where the null case is the admin path. Nothing in the app has
+-- ever read storage from the browser, so nothing is broken by the policies
+-- being inert.
+--
+-- THE GRANT IS INTENTIONALLY WITHHELD. What would make these live is
+-- `grant usage on schema app to authenticated`. It is deliberately not here
+-- and should not be added as a tidy-up. It buys the app nothing it uses,
+-- and it costs a real widening: app.is_admin, app.current_user_id and
+-- app.can_access_job_photo become reachable by anything holding the anon
+-- key. Those are the authorisation primitives, and unreachable-from-outside
+-- is a stronger position than reachable-but-correct.
+--
+-- The one thing that changes this: moving photo delivery browser-side. Then
+-- the grant is right — as a deliberate change with its own testing, not as
+-- a side effect of writing these policies down.
 --
 -- The predicates themselves are sound, which is why 0042 mattered: with
 -- search_path pinned, a shadowed `public.jobs` can no longer change who
