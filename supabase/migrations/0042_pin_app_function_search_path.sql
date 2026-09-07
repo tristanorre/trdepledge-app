@@ -28,13 +28,11 @@
 -- against production it is a no-op, since the schema is already there and
 -- owned by postgres.
 --
--- STILL NOT WRITTEN DOWN: the three `job-photos` policies on storage.objects
--- (job_photos_read, job_photos_insert, job_photos_delete) that call these
--- functions. They are live in production and absent from the migrations —
--- 0010 says no storage policies are needed because everything goes through
--- the service role, which stopped being the whole story when these were
--- added. Transcribing them is a separate job; storage.objects is Supabase's
--- table, not ours, so the migration needs care rather than a quick insert.
+-- THE CALLERS ARE IN 0043. The three `job-photos` policies on
+-- storage.objects (job_photos_read, job_photos_insert, job_photos_delete)
+-- call these functions and were missing from the migrations for the same
+-- reason. Read 0043's header before trusting them: all three are currently
+-- inert, because the roles they apply to have no USAGE on this schema.
 --
 -- ALREADY APPLIED IN PRODUCTION — this file is a transcription of migration
 -- `0042_pin_app_function_search_path` (applied 2026-09-07), written down so
