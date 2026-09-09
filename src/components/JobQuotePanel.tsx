@@ -307,7 +307,7 @@ export default function JobQuotePanel({
             below. Qty + pricing come from the estimate + materials above.
             <div style={{ marginTop: 6, color: "var(--gray)" }}>
               Two-step approval: <strong>Approve here</strong> to land it in Xero as a draft,
-              then <strong>Send inside Xero</strong> — that's the step that emails the quote
+              then <strong>Send inside Xero</strong> — that&apos;s the step that emails the quote
               to the customer.
             </div>
           </div>

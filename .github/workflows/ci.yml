@@ -13,26 +13,27 @@
 #
 # WHAT IT RUNS, AND WHAT IT DOESN'T
 #
-# `typecheck` and `test:unit`, because both pass today and both are fast:
-# the unit suite is 177 tests in about three seconds and needs no browser,
-# no dev server and no Supabase credentials (see playwright.unit.config.ts).
+# `typecheck`, `lint` and `test:unit`. All three pass and all three are
+# fast: the unit suite is 177 tests in about three seconds and needs no
+# browser, no dev server and no Supabase credentials (see
+# playwright.unit.config.ts).
+#
+# Lint fails the run on errors, not on warnings — the eslint default, left
+# alone deliberately. Three warnings stand today: two `<img>`-instead-of-
+# `next/image` notes (gallery/page.tsx, JobPhotosSection.tsx) and one
+# react-hooks/exhaustive-deps in AvailabilityBoard.tsx. Each is a real code
+# change with a judgement call in it, not a typo, so none was swept up in
+# the change that turned lint on. Fix them and add `-- --max-warnings=0` to
+# the lint step if you want the line held there.
 #
 # NOT `build` — Vercel already builds every PR against the real environment
 # variables. Running `next build` here again would take minutes to tell us
 # something we are already being told.
 #
-# NOT `lint`, and not because it was forgotten. There is no ESLint config
-# in the repo, so `next lint` opens an interactive setup prompt and exits 1
-# on a machine with no TTY — it would fail every run and mean nothing.
-# Adding `.eslintrc.json` with `{"extends": "next/core-web-vitals"}` makes
-# it work and currently surfaces 5 errors (all `react/no-unescaped-entities`
-# — bare apostrophes in JSX copy) and 3 warnings. Fix those and add a
-# `- run: npm run lint` step below; it is a small job, deliberately left
-# out of the change that introduced this file.
-#
-# NOT `test:e2e` — that one starts a dev server and signs in against a
-# seeded database. It needs real Supabase credentials, which do not belong
-# in a workflow that runs on pull requests.
+# NOT `test:e2e` — that one starts a dev server and runs a global setup
+# that signs in against a seeded database. It needs real Supabase
+# credentials, which do not belong in a workflow that runs on pull requests
+# from anywhere.
 
 name: CI
 
@@ -49,7 +50,7 @@ concurrency:
 
 jobs:
   checks:
-    name: Typecheck and unit tests
+    name: Typecheck, lint and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -72,6 +73,13 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # `next lint` needs .eslintrc.json to exist. Without it, it opens an
+      # interactive setup prompt and exits 1 on a runner with no TTY — so if
+      # this step ever starts failing with a menu in the log, that file went
+      # missing rather than the code going wrong.
+      - name: Lint
+        run: npm run lint
 
       - name: Unit tests
         run: npm run test:unit
