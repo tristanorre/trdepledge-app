@@ -1,0 +1,77 @@
+# Run the checks a contributor would run locally, on every pull request.
+#
+# WHY THIS EXISTS
+#
+# Until now the only check on a PR was the Vercel deploy. That proves the
+# app builds; it does not run a single test. So the unit suite — which
+# holds the hire pricing rules, the GSM-7 segment limits on the SMS copy,
+# and the test that fails the build if a figure leaks into Doug's prompt —
+# only ran when somebody remembered to type `npm run test:unit`.
+#
+# For a build where a wrong number is a real invoice and a leaked figure is
+# a customer quoted the wrong rate, "somebody remembered" is not a control.
+#
+# WHAT IT RUNS, AND WHAT IT DOESN'T
+#
+# `typecheck` and `test:unit`, because both pass today and both are fast:
+# the unit suite is 177 tests in about three seconds and needs no browser,
+# no dev server and no Supabase credentials (see playwright.unit.config.ts).
+#
+# NOT `build` — Vercel already builds every PR against the real environment
+# variables. Running `next build` here again would take minutes to tell us
+# something we are already being told.
+#
+# NOT `lint`, and not because it was forgotten. There is no ESLint config
+# in the repo, so `next lint` opens an interactive setup prompt and exits 1
+# on a machine with no TTY — it would fail every run and mean nothing.
+# Adding `.eslintrc.json` with `{"extends": "next/core-web-vitals"}` makes
+# it work and currently surfaces 5 errors (all `react/no-unescaped-entities`
+# — bare apostrophes in JSX copy) and 3 warnings. Fix those and add a
+# `- run: npm run lint` step below; it is a small job, deliberately left
+# out of the change that introduced this file.
+#
+# NOT `test:e2e` — that one starts a dev server and signs in against a
+# seeded database. It needs real Supabase credentials, which do not belong
+# in a workflow that runs on pull requests.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A second push supersedes the first. No point burning minutes on a commit
+# nobody is looking at any more.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 20: nothing in the repo pins a version, and `@types/node` is
+      # ^20, so that is what the types are written against.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # @playwright/test would otherwise pull ~100MB of browsers during
+          # postinstall. The unit config opens no browser, so skip them.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
