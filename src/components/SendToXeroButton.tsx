@@ -115,7 +115,7 @@ export default function SendToXeroButton({
         time log or materials list and reload.
         <div style={{ marginTop: 6, color: "var(--gray)" }}>
           Two-step approval: <strong>Approve here</strong> to land it in Xero as a draft,
-          then <strong>Approve inside Xero</strong> — that's the step that emails the invoice
+          then <strong>Approve inside Xero</strong> — that&apos;s the step that emails the invoice
           to the customer.
         </div>
       </div>
@@ -158,7 +158,7 @@ export default function SendToXeroButton({
           {busy ? "Sending…" : "Approve & Send to Xero →"}
         </button>
         <span style={{ fontSize: 12, color: "var(--gray)" }}>
-          Then open Xero and <strong>Approve</strong> the draft — that's when it emails to the customer.
+          Then open Xero and <strong>Approve</strong> the draft — that&apos;s when it emails to the customer.
         </span>
       </div>
 

@@ -69,7 +69,7 @@ export default function GalleryUploadForm() {
         <div>
           <h2 style={titleStyle}>Add photos to the gallery</h2>
           <p style={subStyle}>
-            Upload photos directly — no job needed. They'll appear in the grid below where you can Feature them onto the public site.
+            Upload photos directly — no job needed. They&apos;ll appear in the grid below where you can Feature them onto the public site.
           </p>
         </div>
       </div>

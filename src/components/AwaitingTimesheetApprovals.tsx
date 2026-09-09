@@ -55,7 +55,7 @@ export default function AwaitingTimesheetApprovals({ weekStart, rows }: Props) {
           No timesheets awaiting your approval this week.
         </div>
         <div style={{ color: "var(--gray)", fontSize: 13 }}>
-          When workers authorise their days on <code>/worker/hours</code>, they'll appear here.
+          When workers authorise their days on <code>/worker/hours</code>, they&apos;ll appear here.
         </div>
       </div>
     );
